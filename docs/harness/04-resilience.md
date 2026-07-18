@@ -1,6 +1,6 @@
 # Data-Core Resilience
 
-Version: v0.3.1 | Updated: 2026-07-18
+Version: v0.4.0 | Updated: 2026-07-18
 
 ## Degradation Strategy
 
@@ -10,6 +10,24 @@ Version: v0.3.1 | Updated: 2026-07-18
 - 单个源失败不影响其他源
 - 所有源不可用则返回 `UNAVAILABLE` grade
 - 网络超时：3s 快速失败，立即尝试下一个源
+
+### 熔断器降级（v0.4.0 新增，第 0 级前置保护）
+
+在多层降级链之前，所有数据源调用先经过 Breaker 熔断器：
+
+```
+调用方 → Breaker（CLOSED） → 数据源（P0）
+         Breaker（OPEN）   → 直接快速失败 → 降级到下一源
+         Breaker（HALF_OPEN）→ 允许探测请求
+```
+
+| 状态 | 说明 | 行为 |
+|:-----|:-----|:-----|
+| `CLOSED` | 正常工作 | 请求正常通过，统计失败次数 |
+| `OPEN` | 熔断开启 | 请求直接快速失败，不调用实际源 |
+| `HALF_OPEN` | 半开探测 | 允许有限请求通过，成功则恢复 CLOSED，失败则回到 OPEN |
+
+**状态转换**: CLOSED → (连续失败 ≥ max_failures) → OPEN → (recovery_timeout 后) → HALF_OPEN → (探测成功) → CLOSED / (探测失败) → OPEN
 
 ### 期货行情降级链
 | 数据类型 | P0 | P1 | P2 |
@@ -40,6 +58,8 @@ Version: v0.3.1 | Updated: 2026-07-18
 |:-------|:-------|:-----|
 | HTTP timeout | 3s | 单次请求超时 |
 | LLM timeout | 30s | LLM 调用超时（隐含在 SDK 中） |
+| 熔断器超时 | 5s | Breaker 包裹的调用超时（v0.4.0） |
+| 熔断器恢复超时 | 30s | OPEN → HALF_OPEN 等待时间（v0.4.0） |
 | Retry count | 0 | 不重试，直接降级 |
 
 ## 降级日志

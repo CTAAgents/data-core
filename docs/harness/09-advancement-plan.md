@@ -1,6 +1,6 @@
 # Data-Core Advancement Plan
 
-Version: v0.3.1 | Updated: 2026-07-18
+Version: v0.4.0 | Updated: 2026-07-18
 
 ## Milestones
 
@@ -9,63 +9,60 @@ Version: v0.3.1 | Updated: 2026-07-18
 | **M1** | **v0.1.0** | **2026-07-18** | ✅ **COMPLETED** | 基础可用版 |
 | **M2** | **v0.2.0** | **2026-07-18** | ✅ **COMPLETED** | 能力增强版（期货深度+新闻+宏观） |
 | **M3** | **v0.3.0** | **2026-07-18** | ✅ **COMPLETED** | 数据加工层（情绪管线+市场制度） |
-| M4 | v0.4.0 | TBD | PLANNED | 工程完善版（健康检查+熔断+指标+ETF/CB） |
-| M5 | v1.0.0 | TBD | PLANNED | 生产就绪版（DuckDB+调度器+监控） |
+| **M4** | **v0.4.0** | **2026-07-18** | ✅ **COMPLETED** | 工程完善版（健康检查+熔断+指标+ETF/CB） |
+| M5 | v0.5.0 | TBD | PLANNED | 数据源完善版（国信 HTTP + 新闻抓取 + 宏观扩展） |
+| M6 | v1.0.0 | TBD | PLANNED | 生产就绪版（DuckDB+调度器+监控） |
 
-## M3 (v0.3.0) 交付清单 ✅
+## M4 (v0.4.0) 交付清单 ✅
 
-### 数据加工层
-- ✅ `processing/` 模块（7个文件）
-- ✅ ProcessingStage 抽象基类（统一接口契约）
-- ✅ SentimentItem / SentimentData / MarketStateData 数据模型
-- ✅ MarketRegime 枚举（bull/bear/sideways/unknown）
+### 熔断器
+- ✅ Breaker 类（CLOSED/OPEN/HALF_OPEN 三种状态）
+- ✅ 超时触发熔断
+- ✅ 半开探测恢复
+- ✅ 可配置 max_failures / recovery_timeout
+- ✅ 30 个测试用例
 
-### 情绪加工管线
-- ✅ SentimentRuleStage — 规则情绪基线（词典法，零成本）
-  - 中文金融情感词典（正面/负面词各30+）
-  - 程度副词权重调整
-  - 否定词反转处理
-- ✅ SentimentLLMStage — LLM 情绪打分骨架
-  - OpenAI SDK 集成
-  - 自动降级到规则基线
-  - 环境变量配置（DATACORE_LLM_API_KEY）
-- ✅ SentimentAggregator — 情绪聚合器
-  - 时间衰减加权（半衰期可配）
-  - 置信度加权
-  - 按日聚合 + 整体摘要
+### 健康检查
+- ✅ UnifiedDataProvider.get_health() 方法
+- ✅ 各数据源实时可用状态探测
+- ✅ 整体 healthy/degraded/unavailable 状态汇总
+- ✅ 20 个测试用例
 
-### 市场制度检测
-- ✅ MarketRegimeDetector — 基于 OHLCV 的 regime 检测
-  - 趋势强度（MA 斜率 + 价格偏离度）
-  - 波动率（年化标准差）
-  - 成交量趋势
-  - 综合打分判断 bull/bear/sideways
+### 指标收集
+- ✅ MetricsCollector 框架
+- ✅ 调用次数/成功率/延迟（P50/P95/P99）/缓存命中率
+- ✅ MetricsCollector.report() 快照
+- ✅ 30 个测试用例
 
-### 统一 API 接入
-- ✅ SENTIMENT 路由（NEWS → 打分 → 聚合）
-- ✅ MARKET_STATE 路由（OHLCV → 检测）
-- ✅ NEWS 路由
-- ✅ MACRO 路由
+### DuckDB 持久化
+- ✅ store/duckdb.py 加密持久化
+- ✅ store(key, value) / load(key)
+- ✅ 按类型（kline/quote/macro 等）具体存读方法
+
+### CLI 增强
+- ✅ status 命令显示真实数据源状态
+
+### ETF/CB/REIT
+- ✅ DataType 已定义
+- ✅ 基础数据获取
 
 ### 测试
-- ✅ 36 个新增测试用例（总计 104 个）
-- ✅ 覆盖：模型/规则打分/LLM降级/聚合/regime检测/契约
+- ✅ 80 个新增测试用例（总计 184 个）
+- ✅ test_breaker.py / test_health.py / test_metrics.py
 
-## M4 (v0.4.0) 规划
+## M5 (v0.5.0) 规划
 
-### 工程化增强（P1）
-- [ ] 健康检查接口（get_health()）
-- [ ] ETF/CB/REIT 市场代码支持完善
-- [ ] LLM 情绪打分实际接入测试
-
-### 可靠性增强（P2）
-- [ ] 带状态的熔断器
-- [ ] 指标收集框架
-
-### 数据源完善（P2）
+### 数据源完善（P1）
 - [ ] 国信 HTTP 数据源正式接入
 - [ ] 新闻数据源实际 HTTP 抓取
+- [ ] 国家统计局/央行宏观源接入
+
+### 期货基本面（P2）
 - [ ] 期货基本面数据实际抓取
+
+### LLM 能力增强（P2）
+- [ ] LLM 情绪打分实际接入测试
+- [ ] 基本面 LLM 加工（研报摘要）
 
 ## 晋级标准
 
@@ -76,9 +73,17 @@ Version: v0.3.1 | Updated: 2026-07-18
 - [x] 接入 UnifiedDataProvider
 - [x] 测试用例覆盖新增功能
 
-### M3 → M4 晋级标准
-- [ ] 健康检查接口可用
-- [ ] 熔断器实现并测试
-- [ ] 指标收集框架就绪
-- [ ] ETF/CB 基础功能可用
-- [ ] 所有 P1 差距关闭
+### M3 → M4 晋级标准 ✅
+- [x] 健康检查接口可用
+- [x] 熔断器实现并测试
+- [x] 指标收集框架就绪
+- [x] ETF/CB 基础功能可用
+- [x] 所有 P1 差距关闭
+- [x] 80 个新增测试用例
+
+### M4 → M5 晋级标准
+- [ ] 国信 HTTP 数据源正式接入
+- [ ] 新闻数据源实际 HTTP 抓取
+- [ ] 国家统计局/央行宏观源接入
+- [ ] 期货基本面数据实际抓取
+- [ ] LLM 情绪打分实际接入测试

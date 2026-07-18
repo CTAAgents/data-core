@@ -93,6 +93,16 @@ class TestCmdStatus:
     def test_status_output(self, capsys):
         mock_dc = MagicMock()
         mock_dc.list_symbols.return_value = [{"symbol": "A"}, {"symbol": "B"}]
+        mock_dc.get_health.return_value = {
+            "status": "degraded",
+            "version": "0.1.0",
+            "sources": {
+                "tdx_lc": {"available": True, "latency_ms": 5.0},
+                "tencent": {"available": False, "latency_ms": 0.0, "error": "timeout"},
+                "eastmoney": {"available": True, "latency_ms": 12.0},
+            },
+            "timestamp": 1000.0,
+        }
         with (
             patch("datacore.cli.UnifiedDataProvider", return_value=mock_dc),
             patch("datacore.cli.__version__", "0.1.0"),

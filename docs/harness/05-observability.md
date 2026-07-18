@@ -1,6 +1,6 @@
 # Data-Core Observability
 
-Version: v0.3.1 | Updated: 2026-07-18
+Version: v0.4.0 | Updated: 2026-07-18
 
 ## Data Quality Grades
 
@@ -40,20 +40,57 @@ Version: v0.3.1 | Updated: 2026-07-18
 | `volume_trend` | 成交量趋势 |
 | `features` | 原始特征字典 |
 
-## 指标收集（规划中）
+## 健康检查接口（v0.4.0 新增）
 
-已登记差距: G05 [P2]
+`UnifiedDataProvider.get_health()` 返回各数据源实时可用状态：
 
-| 指标 | 说明 |
-|:-----|:-----|
-| 数据源成功率 | 每个源的成功/失败比率 |
-| LLM 调用成功率 | LLM 情绪打分成功率 |
-| 降级触发次数 | LLM→规则降级频率 |
-| 响应延迟 P50/P95 | 各源响应时间分布 |
-| 缓存命中率 | MemoryCache 命中比率 |
+| 返回字段 | 类型 | 说明 |
+|:---------|:-----|:-----|
+| `status` | str | 整体状态：healthy / degraded / unavailable |
+| `sources` | dict | 各数据源状态详情 |
+| `sources.{name}.available` | bool | 该源是否可用 |
+| `sources.{name}.latency_ms` | float | 健康检查延迟（毫秒） |
+| `sources.{name}.grade` | str | 数据质量等级 |
+| `sources.{name}.last_error` | str | 最近错误信息（如有） |
+| `sources.{name}.breaker_state` | str | 熔断器状态（CLOSED/OPEN/HALF_OPEN） |
+| `timestamp` | str | 检查时间戳 |
+
+健康检查覆盖的数据源列表：
+- `tdx_local` — TQ-Local 通达信本地服务
+- `eastmoney` — 东方财富 HTTP
+- `tencent` — 腾讯财经
+- `cls` — 财联社新闻
+- `wallstreet` — 华尔街见闻
+- `llm` — LLM 情绪打分服务
+
+## 指标收集（v0.4.0 已实现）
+
+已关闭差距: G05 [P2]
+
+MetricsCollector 统计以下指标：
+
+| 指标名称 | 类型 | 说明 |
+|:---------|:-----|:-----|
+| `calls_total` | Counter | 总调用次数（按数据源/方法维度） |
+| `calls_success` | Counter | 成功调用次数 |
+| `calls_failed` | Counter | 失败调用次数 |
+| `success_rate` | Gauge | 成功率百分比（实时） |
+| `latency_p50` | Gauge | 响应延迟 P50（毫秒） |
+| `latency_p95` | Gauge | 响应延迟 P95（毫秒） |
+| `latency_p99` | Gauge | 响应延迟 P99（毫秒） |
+| `cache_hit_rate` | Gauge | 缓存命中率 |
+| `cache_hits` | Counter | 缓存命中次数 |
+| `cache_misses` | Counter | 缓存未命中次数 |
+| `breaker_open_count` | Counter | 熔断器开启次数 |
+| `breaker_half_open_count` | Counter | 熔断器半开探测次数 |
+
+> 指标数据可通过 `MetricsCollector.report()` 获取完整快照。
 
 ## TODO / Gaps
 
-- [G05 P2] 指标收集框架
-- [G04 P1] 健康检查接口
-- [G01 P2] 熔断器状态可观测
+- [G03 P2] 国信 HTTP 数据源正式接入（v0.5.0 规划）
+- [G07 P2] 新闻数据源实际接入
+- [G08 P2] 国家统计局/央行宏观源
+- [G09 P2] 期货基本面数据抓取
+- [G11 P2] LLM 情绪打分实际接入
+- [G12 P2] 基本面LLM加工（研报摘要）

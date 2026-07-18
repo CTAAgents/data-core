@@ -1,6 +1,6 @@
 # Data-Core Testing
 
-Version: v0.3.1 | Updated: 2026-07-18
+Version: v0.4.0 | Updated: 2026-07-18
 
 ## Test Files
 
@@ -16,20 +16,27 @@ Version: v0.3.1 | Updated: 2026-07-18
 | `tests/test_news.py` | 11 | 新闻分类器 + 新闻模型 |
 | `tests/test_macro.py` | 3 | 宏观数据模型 |
 | `tests/test_processing.py` | 36 | 数据加工层（情绪管线 + 市场制度） |
+| `tests/test_breaker.py` | 30 | **熔断器（v0.4.0 新增）** |
+| `tests/test_health.py` | 20 | **健康检查（v0.4.0 新增）** |
+| `tests/test_metrics.py` | 30 | **指标收集（v0.4.0 新增）** |
 
-**总计: 10 个测试文件，104 个测试用例**
+**总计: 13 个测试文件，184 个测试用例**
 
-## v0.3.0 新增测试
+## v0.4.0 新增测试
 
 | 测试类 | 用例数 | 说明 |
 |:-------|:-------|:-----|
-| TestSentimentModels | 5 | SentimentItem/SentimentData/MarketStateData 模型 |
-| TestSentimentRuleStage | 8 | 规则情绪基线（正面/负面/中性/否定词/自定义） |
-| TestSentimentLLMStage | 3 | LLM 降级测试（无API Key/降级/禁用降级） |
-| TestSentimentAggregator | 5 | 聚合器（空/基本/时间衰减/置信度过滤/按日） |
-| TestMarketRegimeDetector | 7 | 市场制度（数据不足/牛/熊/横盘/特征/品种传递） |
-| TestProcessingStageContract | 4 | 接口契约（继承/输入输出类型/优先级） |
-| TestNewDataTypes | 4 | SENTIMENT/MARKET_STATE 枚举验证 |
+| TestBreakerStateTransitions | 12 | CLOSED→OPEN→HALF_OPEN→CLOSED 完整状态转换 |
+| TestBreakerTimeout | 6 | 超时触发熔断 |
+| TestBreakerHalfOpenProbe | 6 | 半开探测成功/失败逻辑 |
+| TestBreakerConfig | 6 | 自定义 max_failures/recovery_timeout |
+| TestHealthBasic | 8 | get_health() 基本返回结构 |
+| TestHealthSources | 8 | 各数据源状态探测 |
+| TestHealthDegraded | 4 | 部分源不可用时整体 degraded 状态 |
+| TestMetricsCounter | 8 | 调用次数统计（成功/失败） |
+| TestMetricsLatency | 8 | 延迟 P50/P95/P99 统计 |
+| TestMetricsCacheRate | 8 | 缓存命中率统计 |
+| TestMetricsReport | 6 | MetricsCollector.report() 快照 |
 
 ## Run Tests
 
@@ -47,3 +54,4 @@ python -m pytest tests/ -v
 5. **市场场景测试**: 牛市/熊市/横盘三种 regime 必须覆盖
 6. **Mock 测试**: 外部数据源（HTTP/Socket）必须通过 mock 测试覆盖所有异常路径
 7. **覆盖率目标**: 整体 ≥ 95%，核心模块（models/processing/api）≥ 100%
+8. **熔断器测试**: 三种状态转换、超时、半开探测必须全覆盖（v0.4.0 新增）

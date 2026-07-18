@@ -361,6 +361,118 @@ class TestUnifiedDataProvider:
         result = dc.list_symbols(market=MarketType.ETF)
         assert isinstance(result, list)
 
+    # ──────────── get_health 健康检查 ────────────
+
+    def test_get_health(self):
+        """基本健康检查返回格式正确。"""
+        dc = UnifiedDataProvider()
+        mock_source = MagicMock()
+        mock_source.check_available.return_value = True
+        mock_provider = MagicMock()
+        mock_provider.sources = [mock_source]
+
+        with (
+            patch("datacore.api._get_futures", return_value=mock_provider),
+            patch("datacore.api._get_equity", return_value=mock_provider),
+            patch("datacore.api._get_news", return_value=mock_provider),
+            patch("datacore.api._get_macro", return_value=mock_provider),
+        ):
+            result = dc.get_health()
+            assert isinstance(result, dict)
+            assert "status" in result
+            assert "version" in result
+            assert "sources" in result
+            assert "timestamp" in result
+
+    def test_get_health_sources(self):
+        """健康检查包含各数据源探测结果。"""
+        dc = UnifiedDataProvider()
+        src_a = MagicMock()
+        src_a.check_available.return_value = True
+        src_a.name = "tdx_lc"
+        src_b = MagicMock()
+        src_b.check_available.return_value = False
+        src_b.name = "guosen"
+
+        futures_provider = MagicMock()
+        futures_provider.sources = [src_a, src_b]
+        others = MagicMock()
+        others.sources = []
+
+        with (
+            patch("datacore.api._get_futures", return_value=futures_provider),
+            patch("datacore.api._get_equity", return_value=others),
+            patch("datacore.api._get_news", return_value=others),
+            patch("datacore.api._get_macro", return_value=others),
+        ):
+            result = dc.get_health()
+            sources = result["sources"]
+            assert "tdx_lc" in sources
+            assert "guosen" in sources
+            assert sources["tdx_lc"]["available"] is True
+            assert sources["guosen"]["available"] is False
+            assert "latency_ms" in sources["tdx_lc"]
+
+    def test_get_health_version(self):
+        """健康检查包含版本信息。"""
+        dc = UnifiedDataProvider()
+        mock_source = MagicMock()
+        mock_source.check_available.return_value = True
+        mock_provider = MagicMock()
+        mock_provider.sources = [mock_source]
+
+        with (
+            patch("datacore.api._get_futures", return_value=mock_provider),
+            patch("datacore.api._get_equity", return_value=mock_provider),
+            patch("datacore.api._get_news", return_value=mock_provider),
+            patch("datacore.api._get_macro", return_value=mock_provider),
+        ):
+            result = dc.get_health()
+            assert result["version"] == "0.4.0"
+
+    def test_get_health_status(self):
+        """全源可用时返回 healthy。"""
+        dc = UnifiedDataProvider()
+        src = MagicMock()
+        src.check_available.return_value = True
+        mock_provider = MagicMock()
+        mock_provider.sources = [src]
+
+        with (
+            patch("datacore.api._get_futures", return_value=mock_provider),
+            patch("datacore.api._get_equity", return_value=mock_provider),
+            patch("datacore.api._get_news", return_value=mock_provider),
+            patch("datacore.api._get_macro", return_value=mock_provider),
+        ):
+            result = dc.get_health()
+            assert result["status"] == "healthy"
+
+    def test_get_health_degraded(self):
+        """部分源不可用时返回 healthy（任一源可用即算健康）。"""
+        dc = UnifiedDataProvider()
+        good_src = MagicMock()
+        good_src.check_available.return_value = True
+        bad_src = MagicMock()
+        bad_src.check_available.return_value = False
+
+        futures_provider = MagicMock()
+        futures_provider.sources = [bad_src]
+        equity_provider = MagicMock()
+        equity_provider.sources = [good_src]
+        empty = MagicMock()
+        empty.sources = []
+
+        with (
+            patch("datacore.api._get_futures", return_value=futures_provider),
+            patch("datacore.api._get_equity", return_value=equity_provider),
+            patch("datacore.api._get_news", return_value=empty),
+            patch("datacore.api._get_macro", return_value=empty),
+        ):
+            result = dc.get_health()
+            assert result["status"] == "healthy"
+            # 仅 equity 模块返回 available=True
+            assert any(v["available"] for v in result["sources"].values())
+
 
 # ════════════════════════════════════════════════════════════
 # DataCoreConfig 配置系统测试

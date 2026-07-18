@@ -1,6 +1,6 @@
 # Data-Core Architecture
 
-Version: v0.3.1 | Updated: 2026-07-18
+Version: v0.4.0 | Updated: 2026-07-18
 
 ## 1. System Positioning
 
@@ -10,10 +10,16 @@ Data-Core is responsible for data collection and processing (including LLM-based
 
 **v0.3.0 边界更新**: SENTIMENT/MARKET_STATE 由 Data-Core 数据加工层产出（含LLM打分+聚合），FTS 直接消费。
 
+**v0.4.0 边界更新**: 新增 Breaker 熔断层、MetricsCollector 指标收集框架、DuckDB 持久化数据流。
+
 ## 2. Layered Architecture
 
 ```
 UnifiedDataProvider (api.py)
+  ├── Breaker (熔断层, v0.4.0 新增)
+  │   └── 包裹所有数据源调用（CLOSED/OPEN/HALF_OPEN）
+  ├── MetricsCollector (指标收集, v0.4.0 新增)
+  │   └── 统计调用次数/成功率/延迟/缓存命中率
   ├── futures/          # 期货数据模块
   │   ├── futures_provider.py    # 期货统一入口
   │   └── providers/             # 多源降级链
@@ -39,14 +45,22 @@ UnifiedDataProvider (api.py)
   │   │   ├── sentiment_llm.py   # LLM 情绪打分（高质量）
   │   │   └── sentiment_aggregator.py  # 情绪聚合器
   │   └── market_regime.py       # 市场制度检测（bull/bear/sideways）
+  ├── store/            # 存储层（缓存+持久化）
+  │   ├── cache.py               # MemoryCache 内存缓存
+  │   └── duckdb.py              # DuckDB 持久化（v0.4.0 新增加密存读）
   ├── models/           # 数据模型与枚举
   │   └── enums.py               # DataType/MarketType/SourceGrade
   ├── registry/         # 品种注册表
-  ├── store/            # 存储层（缓存+持久化）
   └── config.py         # 统一配置系统
+
+# 数据持久化流（v0.4.0）
+api.py → store/duckdb.py → DuckDB 数据库
+  - store(key, value): 加密持久化写入
+  - load(key): 加密持久化读取
+  - 按类型（kline/quote/macro 等）提供具体存读方法
 ```
 
-## 3. DataType 体系（v0.3.0 更新）
+## 3. DataType 体系（v0.4.0 更新）
 
 ### 通用类型（全市场）
 - `OHLCV`, `QUOTE`, `TECHNICAL`, `FINANCIAL`, `FUNDAMENTAL`
@@ -58,9 +72,17 @@ UnifiedDataProvider (api.py)
 - `FUTURES_CONTRACT_CHAIN`, `FUTURES_TERM_STRUCTURE`, `FUTURES_SPREAD`
 - `FUTURES_BASIS`, `FUTURES_POSITION`, `FUTURES_WAREHOUSE_RECEIPT`
 
-### ETF/可转债特异类型
+### ETF/可转债/REIT 特异类型（v0.4.0 已实现基础获取）
 - `ETF_NAV`, `ETF_PREMIUM`, `ETF_FUND_FLOW`
 - `CB_CONVERSION`, `CB_TERMS`, `CB_PURE_BOND`
+
+### v0.4.0 新增组件
+
+| 组件 | 文件 | 说明 |
+|:-----|:-----|:-----|
+| Breaker | 熔断层 | 带状态熔断器（CLOSED/OPEN/HALF_OPEN），包裹数据源调用 |
+| MetricsCollector | 指标收集 | 统计调用次数、成功率、延迟、缓存命中率 |
+| DuckDB 持久化 | store/duckdb.py | 加密持久化存读，支持按类型存取 |
 
 ## 4. 数据加工层（v0.3.0 新增）
 

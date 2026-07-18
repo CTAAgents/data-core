@@ -16,6 +16,7 @@ _sentiment_rule: Any = None
 _sentiment_llm: Any = None
 _sentiment_aggregator: Any = None
 _market_regime: Any = None
+_breaker_pool: dict[str, Any] = {}
 
 
 def _get_futures():
@@ -75,6 +76,13 @@ def _get_market_regime():
     return _market_regime
 
 
+def _get_breaker(name: str) -> Any:
+    if name not in _breaker_pool:
+        from .breaker import Breaker
+        _breaker_pool[name] = Breaker(name)
+    return _breaker_pool[name]
+
+
 class UnifiedDataProvider:
     """Data-Core unified data entry point.
 
@@ -116,7 +124,7 @@ class UnifiedDataProvider:
             payload = _get_futures().get(symbol, data_type, params)
         elif market in (MarketType.STOCK, MarketType.ETF,
                         MarketType.CB, MarketType.REIT):
-            payload = _get_equity().get(symbol, data_type, params)
+            payload = _get_equity().get(symbol, data_type, params, market=market)
 
         if payload is None:
             return DataPayload(
@@ -304,3 +312,45 @@ class UnifiedDataProvider:
             {"symbol": e.symbol, "name": e.name, "market": e.market.value}
             for e in self.registry.list_all()
         ]
+
+    def get_health(self) -> dict:
+        """检查所有数据源健康状态。
+
+        遍历所有模块并探测各数据源可用性及延迟，返回结构化健康报告。
+        """
+        sources: dict[str, dict] = {}
+
+        # ── 期货模块 ──
+        for s in _get_futures().sources:
+            sources[s.name] = self._probe_source(s)
+
+        # ── A 股模块 ──
+        for s in _get_equity().sources:
+            sources[s.name] = self._probe_source(s)
+
+        # ── 新闻模块 ──
+        for s in _get_news().sources:
+            sources[s.name] = self._probe_source(s)
+
+        # ── 宏观模块 ──
+        for s in _get_macro().sources:
+            sources[s.name] = self._probe_source(s)
+
+        any_ok = any(v.get("available", False) for v in sources.values())
+        return {
+            "status": "healthy" if any_ok else "unavailable",
+            "version": "0.4.0",
+            "sources": sources,
+            "timestamp": time.time(),
+        }
+
+    @staticmethod
+    def _probe_source(source: Any) -> dict:
+        """探测单个数据源并返回可用性及延迟。"""
+        t0 = time.time()
+        try:
+            ok = source.check_available()
+        except Exception:
+            ok = False
+        elapsed = round((time.time() - t0) * 1000, 1)
+        return {"available": ok, "latency_ms": elapsed}

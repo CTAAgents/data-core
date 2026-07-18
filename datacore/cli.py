@@ -21,8 +21,14 @@ def cmd_status(args):
     dc = UnifiedDataProvider()
     print(f"Data-Core v{__version__}")
     print(f"注册表: {len(dc.list_symbols())} 个标的")
-    for src_name in ["tdx_lc", "tencent", "eastmoney"]:
-        print(f"  {src_name}: 待探测")
+
+    health = dc.get_health()
+    for src_name, info in health.get("sources", {}).items():
+        ok = "✅" if info.get("available") else "❌"
+        latency = f"{info.get('latency_ms', '?')}ms"
+        print(f"  {src_name}: {ok} ({latency})")
+
+    print(f"\n系统状态: {health.get('status', 'unknown')}")
 
 
 def main():

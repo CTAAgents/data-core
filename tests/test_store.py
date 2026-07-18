@@ -114,6 +114,118 @@ class TestDuckDBStore:
             store = DuckDBStore(db_path="/tmp/test.db")
             store.close()  # 不应抛出
 
+    # ──────────── store / load 方法测试（:memory: 模式）──────────────
+
+    def test_store_kline(self):
+        """存储 K 线并返回行数。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        bars = [
+            {"date": "2026-06-01", "open": 4000.0, "high": 4050.0,
+             "low": 3980.0, "close": 4020.0, "volume": 10000, "amount": 4e7},
+            {"date": "2026-06-02", "open": 4020.0, "high": 4100.0,
+             "low": 4010.0, "close": 4080.0, "volume": 12000, "amount": 4.8e7},
+        ]
+        n = store.store_kline("RB", "1d", bars)
+        assert n == 2
+
+    def test_load_kline(self):
+        """加载 K 线并验证排序（DESC）。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        bars = [
+            {"date": "2026-06-01", "open": 4000.0, "high": 4050.0,
+             "low": 3980.0, "close": 4020.0, "volume": 10000, "amount": 4e7},
+            {"date": "2026-06-02", "open": 4020.0, "high": 4100.0,
+             "low": 4010.0, "close": 4080.0, "volume": 12000, "amount": 4.8e7},
+        ]
+        store.store_kline("RB", "1d", bars)
+        loaded = store.load_kline("RB", "1d", days=365)
+        assert len(loaded) == 2
+        # 第一条应为最近日期（DESC）
+        assert loaded[0]["date"] == "2026-06-02"
+        assert loaded[0]["close"] == 4080.0
+        assert loaded[1]["date"] == "2026-06-01"
+        assert loaded[1]["close"] == 4020.0
+
+    def test_store_quote(self):
+        """存储行情快照。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        quote = {"collected_at": "2025-06-01 10:30:00",
+                 "last_price": 4100.0, "volume": 50000, "amount": 2.05e8}
+        store.store_quote("RB", quote)
+        loaded = store.load_quote("RB")
+        assert loaded is not None
+        assert loaded["symbol"] == "RB"
+        assert loaded["last_price"] == 4100.0
+
+    def test_load_quote(self):
+        """加载最新行情快照（未找到时返回 None）。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        # 无数据时返回 None
+        assert store.load_quote("NONEXIST") is None
+
+        # 写入两条，验证返回最新的一条
+        store.store_quote("RB", {"collected_at": "2025-01-01 09:30:00",
+                                 "last_price": 4000.0, "volume": 100, "amount": 1e5})
+        store.store_quote("RB", {"collected_at": "2025-06-01 10:30:00",
+                                 "last_price": 4100.0, "volume": 200, "amount": 2e5})
+        loaded = store.load_quote("RB")
+        assert loaded["last_price"] == 4100.0
+        # DuckDB TIMESTAMP 返回 datetime 对象
+        from datetime import datetime
+        assert loaded["collected_at"] == datetime(2025, 6, 1, 10, 30, 0)
+
+    def test_store_macro(self):
+        """存储宏观指标。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        store.store_macro("GDP", "2025-Q1", 5.5)
+        store.store_macro("GDP", "2025-Q2", 5.2)
+        rows = store.load_macro("GDP", limit=10)
+        assert len(rows) == 2
+
+    def test_load_macro(self):
+        """加载宏观指标，验证 limit 和排序。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        for i in range(5):
+            store.store_macro("PMI", f"2025-0{i+1}", 50.0 + i)
+        # limit=2
+        rows = store.load_macro("PMI", limit=2)
+        assert len(rows) == 2
+        # 按 date DESC 排序
+        assert rows[0]["date"] == "2025-05"
+        assert rows[1]["date"] == "2025-04"
+
+    def test_store_kline_upsert(self):
+        """重复写入幂等 — INSERT OR REPLACE 不产生重复行。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        bar = {"date": "2026-06-01", "open": 4000.0, "high": 4050.0,
+               "low": 3980.0, "close": 4020.0, "volume": 10000, "amount": 4e7}
+        # 第一次写入
+        n1 = store.store_kline("RB", "1d", [bar])
+        assert n1 == 1
+        # 第二次写入相同主键（更新 close）
+        bar2 = {**bar, "close": 4050.0}
+        n2 = store.store_kline("RB", "1d", [bar2])
+        assert n2 == 1
+        # 验证只有一行，且 close 被更新
+        loaded = store.load_kline("RB", "1d", days=365)
+        assert len(loaded) == 1
+        assert loaded[0]["close"] == 4050.0
+
+    def test_store_kline_empty(self):
+        """空列表引发 InvalidInputException（DuckDB 限制）。"""
+        store = DuckDBStore(":memory:")
+        store.init_schema()
+        import duckdb
+        with pytest.raises(duckdb.InvalidInputException, match="executemany requires"):
+            store.store_kline("RB", "1d", [])
+
 
 # =============================================================================
 # PostgresStore

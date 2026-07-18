@@ -14,7 +14,8 @@ class EquityDataProvider:
         self.sources = [TencentProvider(), EastMoneyEquityProvider()]
 
     def get(self, symbol: str, data_type: DataType,
-            params: dict | None = None) -> Optional[DataPayload]:
+            params: dict | None = None,
+            market: MarketType = MarketType.STOCK) -> Optional[DataPayload]:
         for src in self.sources:
             if not src.check_available():
                 continue
@@ -23,12 +24,27 @@ class EquityDataProvider:
             try:
                 payload = src.fetch(symbol, data_type, params)
                 if payload and payload.available:
+                    payload.market = market
                     return payload
             except Exception:
                 continue
         return DataPayload(
             symbol=symbol, data_type=data_type,
-            market=MarketType.STOCK,
+            market=market,
             grade=SourceGrade.UNAVAILABLE,
             errors=["所有 A 股源不可用"], collected_at=time.time(),
         )
+
+    def _get_etf(self, symbol: str, data_type: DataType,
+                 params: dict | None = None) -> Optional[DataPayload]:
+        """获取 ETF 数据。"""
+        for src in self.sources:
+            if not src.check_available() or data_type not in src.supported_types:
+                continue
+            try:
+                payload = src.fetch(symbol, data_type, params)
+                if payload and payload.available:
+                    return payload
+            except Exception:
+                continue
+        return None
