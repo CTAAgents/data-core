@@ -43,8 +43,9 @@ macro = dc.get('*', DataType.MACRO)
 ## 设计原则
 
 - **AI Native**: 所有数据返回携带溯源元数据（source, grade, freshness），供 LLM 决策
+- **数据加工层**: Data-Core 负责从原始数据到可消费结构化数据的转换（含 LLM 情绪打分）
 - **零外部依赖**: 自包含 HTTP 数据源，单 pip install 即可使用
-- **优雅降级**: 多源回退链，永不硬失败
+- **优雅降级**: 多源回退链 + LLM→规则降级，永不硬失败
 - **市场无关**: 统一 API 覆盖期货、股票、ETF、可转债、REITs
 
 ## 架构
