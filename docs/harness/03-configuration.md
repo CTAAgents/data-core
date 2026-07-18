@@ -1,6 +1,6 @@
 # Data-Core Configuration
 
-Version: v0.3.0 | Updated: 2026-07-18
+Version: v0.3.1 | Updated: 2026-07-18
 
 ## Config Sources (priority high to low)
 

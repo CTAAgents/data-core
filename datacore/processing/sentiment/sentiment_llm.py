@@ -135,10 +135,11 @@ class SentimentLLMStage(ProcessingStage):
     def _call_llm(self, title: str, content: str) -> dict:
         """调用 LLM 进行情绪打分。"""
         if self._client is None:
-            import openai
-            self._client = openai.OpenAI(api_key=self.api_key)
+            import openai  # type: ignore[import-untyped]
+            self._client = openai.OpenAI(api_key=self.api_key)  # type: ignore[assignment]
 
         prompt = SENTIMENT_PROMPT_TEMPLATE.format(title=title, content=content[:500])
+        assert self._client is not None
         response = self._client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],

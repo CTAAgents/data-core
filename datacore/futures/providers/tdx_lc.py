@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Optional
 
 import httpx
 
 import re
-import time
 from datacore.config import get_config
 from datacore.futures.providers.base import FuturesDataSource
 from datacore.models.ohlcv import KBar, KlineData, QuoteData

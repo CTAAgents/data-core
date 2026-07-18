@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 import time
-import re
 from typing import Any, Optional
 
 from datacore.processing.base import ProcessingStage

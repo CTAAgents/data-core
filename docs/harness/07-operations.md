@@ -1,6 +1,6 @@
 # Data-Core Operations
 
-Version: v0.3.0 | Updated: 2026-07-18
+Version: v0.3.1 | Updated: 2026-07-18
 
 ## Version History
 
@@ -53,8 +53,8 @@ datacore/                    49 个 Python 源文件
 ├── api.py                   统一入口 API
 └── cli.py                   命令行工具
 
-tests/                       10 个测试文件，104 个测试用例
+tests/                       13 个测试文件，533 个测试用例
 docs/harness/                9 个工程规范文档
-```
+.pylintrc                    pylint 项目级配置（审计满分）
 
-**总计: 49 个源文件 + 10 个测试文件 + 9 个工程文档**
+**总计: 49 个源文件 + 13 个测试文件 + 9 个工程文档**

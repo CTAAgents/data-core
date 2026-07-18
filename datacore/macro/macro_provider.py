@@ -8,7 +8,7 @@ P2: Cached（缓存数据）
 from __future__ import annotations
 import time
 from typing import Optional
-from datacore.models.enums import DataType, SourceGrade
+from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
 from datacore.macro.models import MacroData
 
@@ -51,7 +51,7 @@ class MacroDataProvider:
                     return DataPayload(
                         symbol=indicator or "*",
                         data_type=DataType.MACRO,
-                        market="macro",
+                        market=MarketType.FUTURES,
                         data=macro_data,
                         source=src.name,
                         grade=grade,
@@ -63,7 +63,7 @@ class MacroDataProvider:
         return DataPayload(
             symbol=indicator or "*",
             data_type=DataType.MACRO,
-            market="macro",
+            market=MarketType.FUTURES,
             data=MacroData(indicator=indicator or ""),
             grade=SourceGrade.UNAVAILABLE,
             errors=["所有宏观数据源不可用"],

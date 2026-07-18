@@ -70,20 +70,24 @@ class DataCoreConfig:
 
     @property
     def tdx_url(self) -> str:
-        return self._get("sources.tdx_lc.url", "http://127.0.0.1:17709/")
+        v = self._get("sources.tdx_lc.url", "http://127.0.0.1:17709/")
+        return v or "http://127.0.0.1:17709/"
 
     @property
     def tdx_timeout(self) -> int:
-        return int(self._get("sources.tdx_lc.timeout", "3"))
+        v = self._get("sources.tdx_lc.timeout", "3")
+        return int(v) if v is not None else 3
 
     @property
     def cache_ttl(self) -> int:
-        return int(self._get("store.cache_ttl", "3600"))
+        v = self._get("store.cache_ttl", "3600")
+        return int(v) if v is not None else 3600
 
     @property
     def duckdb_path(self) -> str:
         path = self._get("store.duckdb_path", "~/.datacore/datacore.db")
-        return os.path.expanduser(path)
+        expanded = os.path.expanduser(path) if path else "~/.datacore/datacore.db"
+        return expanded
 
     @property
     def pg_dsn(self) -> Optional[str]:
@@ -95,7 +99,8 @@ class DataCoreConfig:
 
     @property
     def store_backend(self) -> str:
-        return self._get("store.backend", "duckdb")
+        v = self._get("store.backend", "duckdb")
+        return v or "duckdb"
 
     @property
     def guosen_api_key(self) -> Optional[str]:
@@ -103,11 +108,13 @@ class DataCoreConfig:
 
     @property
     def guosen_url(self) -> str:
-        return self._get("sources.guosen.url", "https://api.guosen.com.cn/")
+        v = self._get("sources.guosen.url", "https://api.guosen.com.cn/")
+        return v or "https://api.guosen.com.cn/"
 
     @property
     def guosen_timeout(self) -> int:
-        return int(self._get("sources.guosen.timeout", "5"))
+        v = self._get("sources.guosen.timeout", "5")
+        return int(v) if v is not None else 5
 
     def __repr__(self) -> str:
         return f"DataCoreConfig(backend={self.store_backend})"

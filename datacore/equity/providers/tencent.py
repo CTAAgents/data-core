@@ -35,13 +35,16 @@ def _parse_tencent_quote(text: str, symbol: str) -> Optional[QuoteData]:
         qd.pre_close = _f(parts[4])
         qd.open = _f(parts[5])
         qd.volume = _f(parts[6])
-        qd.amount = _f(parts[7]) * 10000 if parts[7] else None
+        f7 = _f(parts[7])
+        qd.amount = f7 * 10000.0 if f7 is not None else None
         qd.high = _f(parts[33]) if len(parts) > 33 else None
         qd.low = _f(parts[34]) if len(parts) > 34 else None
         qd.change_pct = _f(parts[32]) if len(parts) > 32 else None
         qd.update_time = parts[31] if len(parts) > 31 else None
-        qd.bid_price = [_f(parts[9]), _f(parts[11]), _f(parts[13]), _f(parts[15]), _f(parts[17])]
-        qd.ask_price = [_f(parts[10]), _f(parts[12]), _f(parts[14]), _f(parts[16]), _f(parts[18])]
+        _bid_idx = (9, 11, 13, 15, 17)
+        qd.bid_price = [x for i in _bid_idx if (x := _f(parts[i])) is not None]
+        _ask_idx = (10, 12, 14, 16, 18)
+        qd.ask_price = [x for i in _ask_idx if (x := _f(parts[i])) is not None]
         return qd
     except (IndexError, ValueError):
         return None

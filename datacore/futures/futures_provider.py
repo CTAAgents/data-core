@@ -2,7 +2,7 @@
 from __future__ import annotations
 import time
 from typing import Optional
-from datacore.models.enums import DataType, SourceGrade
+from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
 from datacore.futures.providers import TdxLcProvider, EastMoneyFuturesProvider
 
@@ -21,19 +21,19 @@ class FuturesDataProvider:
 
         if data_type == DataType.OHLCV:
             return self._get_kline(symbol, period, days)
-        elif data_type == DataType.QUOTE:
+        if data_type == DataType.QUOTE:
             return self._get_quote(symbol)
-        elif data_type == DataType.FUTURES_CONTRACT_CHAIN:
+        if data_type == DataType.FUTURES_CONTRACT_CHAIN:
             return self._get_contract_chain(symbol, params)
-        elif data_type == DataType.FUTURES_TERM_STRUCTURE:
+        if data_type == DataType.FUTURES_TERM_STRUCTURE:
             return self._get_term_structure(symbol)
-        elif data_type == DataType.FUTURES_SPREAD:
+        if data_type == DataType.FUTURES_SPREAD:
             return self._get_spread(symbol, params)
-        elif data_type == DataType.FUTURES_BASIS:
+        if data_type == DataType.FUTURES_BASIS:
             return self._get_basis(symbol)
-        elif data_type == DataType.FUTURES_POSITION:
+        if data_type == DataType.FUTURES_POSITION:
             return self._get_position_rank(symbol)
-        elif data_type == DataType.FUTURES_WAREHOUSE_RECEIPT:
+        if data_type == DataType.FUTURES_WAREHOUSE_RECEIPT:
             return self._get_warehouse_receipts(symbol)
         return None
 
@@ -49,7 +49,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.OHLCV,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=kd, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
@@ -57,7 +57,7 @@ class FuturesDataProvider:
                 continue
         return DataPayload(
             symbol=symbol, data_type=DataType.OHLCV,
-            market=type(self).__module__,
+            market=MarketType.FUTURES,
             grade=SourceGrade.UNAVAILABLE,
             errors=["所有期货源不可用"], collected_at=time.time(),
         )
@@ -71,7 +71,7 @@ class FuturesDataProvider:
                 if qd and qd.last_price:
                     return DataPayload(
                         symbol=symbol, data_type=DataType.QUOTE,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=qd, source=src.name,
                         grade=SourceGrade.PRIMARY,
                         collected_at=time.time(),
@@ -95,7 +95,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.FUTURES_CONTRACT_CHAIN,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=chain, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
@@ -115,7 +115,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.FUTURES_TERM_STRUCTURE,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=ts, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
@@ -141,7 +141,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.FUTURES_SPREAD,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=spread, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
@@ -161,7 +161,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.DAILY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.FUTURES_BASIS,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=basis, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
@@ -181,7 +181,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.PRIMARY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.FUTURES_POSITION,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=pos, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
@@ -201,7 +201,7 @@ class FuturesDataProvider:
                     grade = SourceGrade.PRIMARY
                     return DataPayload(
                         symbol=symbol, data_type=DataType.FUTURES_WAREHOUSE_RECEIPT,
-                        market=type(self).__module__,
+                        market=MarketType.FUTURES,
                         data=wr, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )

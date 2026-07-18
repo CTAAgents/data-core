@@ -49,7 +49,8 @@ class EastMoneyResearchProvider(NewsDataSource):
                     content=str(item.get("content", "") or item.get("s3", "") or ""),
                     published_at=str(item.get("publishDate", "") or ""),
                     source=f"eastmoney_{item.get('orgSName', '')}",
-                    url=f"https://data.eastmoney.com/report/zw_macresearch.jshtml?encodeUrl={item.get('encodeUrl', '')}",
+                    url=("https://data.eastmoney.com/report/zw_macresearch."
+                         f"jshtml?encodeUrl={item.get('encodeUrl', '')}"),
                     tags=[],
                     related_symbols=[],
                 ))

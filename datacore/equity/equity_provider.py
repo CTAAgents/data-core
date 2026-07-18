@@ -2,7 +2,7 @@
 from __future__ import annotations
 import time
 from typing import Optional
-from datacore.models.enums import DataType, SourceGrade
+from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
 from datacore.equity.providers import TencentProvider, EastMoneyEquityProvider
 
@@ -28,7 +28,7 @@ class EquityDataProvider:
                 continue
         return DataPayload(
             symbol=symbol, data_type=data_type,
-            market=type(self).__module__,
+            market=MarketType.STOCK,
             grade=SourceGrade.UNAVAILABLE,
             errors=["所有 A 股源不可用"], collected_at=time.time(),
         )

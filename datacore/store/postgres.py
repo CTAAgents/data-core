@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import os
 import pickle
 import time
 from typing import Any, Optional
@@ -28,7 +27,6 @@ class PostgresStore:
     def __init__(self, dsn: Optional[str] = None):
         if not _pg_available():
             raise ImportError("psycopg2 not installed: pip install psycopg2-binary")
-        import psycopg2
         self._dsn = dsn or get_config().pg_dsn
         if not self._dsn:
             raise ValueError("PostgreSQL DSN not configured")

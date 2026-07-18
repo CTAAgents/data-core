@@ -1,8 +1,8 @@
 """EquityDataSource 抽象基类。"""
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Optional
-from datacore.models.enums import DataType, SourceGrade, MarketType
+from typing import Optional
+from datacore.models.enums import DataType, MarketType
 from datacore.models.payload import DataPayload
 
 

@@ -40,7 +40,7 @@ class ProcessingStage(ABC):
         Returns:
             加工后的数据（类型由 output_type 声明）
         """
-        ...
+        raise NotImplementedError
 
     def check_available(self) -> bool:
         """检查此加工阶段是否可用（如 LLM 依赖是否安装）。"""

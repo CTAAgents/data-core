@@ -1,6 +1,6 @@
 # Data-Core Testing
 
-Version: v0.3.0 | Updated: 2026-07-18
+Version: v0.3.1 | Updated: 2026-07-18
 
 ## Test Files
 
@@ -45,3 +45,5 @@ python -m pytest tests/ -v
 3. **边界测试**: 空输入、数据不足、异常输入必须有对应用例
 4. **契约测试**: ProcessingStage 接口契约必须验证
 5. **市场场景测试**: 牛市/熊市/横盘三种 regime 必须覆盖
+6. **Mock 测试**: 外部数据源（HTTP/Socket）必须通过 mock 测试覆盖所有异常路径
+7. **覆盖率目标**: 整体 ≥ 95%，核心模块（models/processing/api）≥ 100%

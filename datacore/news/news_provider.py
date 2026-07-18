@@ -6,9 +6,9 @@
 from __future__ import annotations
 import time
 from typing import Optional
-from datacore.models.enums import DataType, SourceGrade
+from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
-from datacore.news.models import NewsData, NewsItem
+from datacore.news.models import NewsData
 from datacore.news.classifier import NewsClassifier
 
 
@@ -79,7 +79,7 @@ class NewsDataProvider:
                     return DataPayload(
                         symbol=symbol or "*",
                         data_type=DataType.NEWS,
-                        market="news",
+                        market=MarketType.FUTURES,
                         data=news_data,
                         source=src.name,
                         grade=grade,
@@ -91,7 +91,7 @@ class NewsDataProvider:
         return DataPayload(
             symbol=symbol or "*",
             data_type=DataType.NEWS,
-            market="news",
+            market=MarketType.FUTURES,
             data=NewsData(symbol=symbol),
             grade=SourceGrade.UNAVAILABLE,
             errors=["所有新闻源不可用"],

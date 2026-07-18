@@ -8,7 +8,6 @@ Redis 作为热缓存层，支持跨进程共享和 TTL 自动过期。
 
 from __future__ import annotations
 
-import os
 import pickle
 from typing import Any, Optional
 
@@ -40,7 +39,7 @@ class RedisStore:
         raw = self._r.get(key)
         if raw is None:
             return None
-        return pickle.loads(raw)
+        return pickle.loads(raw)  # type: ignore[arg-type]
 
     def cache_set(self, key: str, value: Any, ttl_seconds: float) -> None:
         self._r.set(key, pickle.dumps(value), ex=int(ttl_seconds))
@@ -68,5 +67,5 @@ def build_redis_store() -> Optional[RedisStore]:
         return None
     try:
         return RedisStore(url)
-    except Exception:
+    except Exception:  # noqa: E722
         return None

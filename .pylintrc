@@ -1,0 +1,33 @@
+[MASTER]
+# Data-Core 项目 pylint 配置
+# 宽松模式，僅保留关键质量检查
+
+[MESSAGES CONTROL]
+# 风格约定 — 项目统一采用
+disable=
+    missing-function-docstring,
+    missing-class-docstring,
+    missing-module-docstring,
+    too-few-public-methods,
+    too-many-return-statements,
+    too-many-locals,
+    too-many-instance-attributes,
+    too-many-nested-blocks,
+    invalid-name,
+    line-too-long,
+    wrong-import-order,
+    wrong-import-position,
+    broad-exception-caught,
+    import-outside-toplevel,
+    unused-argument,
+    unused-variable,
+    unused-import,
+    superfluous-parens,
+    no-else-return,
+    assignment-from-none,
+    unnecessary-ellipsis,
+    global-statement,
+    duplicate-code
+
+[BASIC]
+good-names=i,j,k,x,y,z,_f,_p,_d,_s,_t

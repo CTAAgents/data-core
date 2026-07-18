@@ -52,7 +52,7 @@ def _get_macro():
 
 def _get_sentiment_llm():
     """获取情绪打分器（LLM 优先，降级到规则基线）。"""
-    global _sentiment_llm, _sentiment_rule
+    global _sentiment_llm
     if _sentiment_llm is None:
         from .processing.sentiment.sentiment_llm import SentimentLLMStage
         _sentiment_llm = SentimentLLMStage(fallback_to_rule=True)
@@ -183,7 +183,6 @@ class UnifiedDataProvider:
         流程: 获取 NEWS → 情绪打分（LLM 优先，降级规则）→ 聚合
         """
         params = params or {}
-        days = params.get("days", 30)
 
         try:
             # Step 1: 获取新闻

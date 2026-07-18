@@ -12,7 +12,7 @@
 from __future__ import annotations
 import time
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from datacore.processing.models import SentimentItem, SentimentData
@@ -128,8 +128,7 @@ class SentimentAggregator:
         if timestamp == 0.0:
             return 0.5  # 未知时间的新闻给中等权重
         age_days = (now - timestamp) / 86400.0
-        if age_days < 0:
-            age_days = 0  # 未来时间的新闻给最高权重
+        age_days = max(age_days, 0)
         return math.pow(0.5, age_days / self.decay_half_life_days)
 
     def _get_date_str(self, timestamp: float) -> str:

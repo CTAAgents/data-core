@@ -1,7 +1,8 @@
 """东方财富 HTTP 数据源 — A 股降级源。"""
 from __future__ import annotations
-from typing import Optional
-import httpx, time
+from typing import Any, Optional
+import httpx
+import time
 from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
 from datacore.models.ohlcv import KBar, KlineData
@@ -98,7 +99,7 @@ class EastMoneyEquityProvider(EquityDataSource):
 
     def _fetch_macro(self) -> Optional[DataPayload]:
         """获取宏观数据(PMI/LPR)。"""
-        macro = {}
+        macro: dict[str, Any] = {}
         try:
             with httpx.Client(timeout=10) as c:
                 r = c.get(
