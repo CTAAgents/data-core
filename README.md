@@ -232,10 +232,9 @@ python -m pytest tests/ -v   # 29 个测试用例
 
 ## 文档
 
-- [CODE_WIKI.md](CODE_WIKI.md) - 完整的代码 Wiki 文档
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 架构设计文档
 - [docs/harness/](docs/harness/) - HARNESS 工程规范文档 (09 份)
-- [docs/harness/08-gap-analysis.md](docs/harness/08-gap-analysis.md) - 已知差距与路线图
+- [docs/archive/](docs/archive/) - 已归档的历史文档（CODE_WIKI, DATA_CORE_ENHANCEMENT）
 
 ## 版本
 
