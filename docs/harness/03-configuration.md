@@ -1,6 +1,6 @@
 # Data-Core Configuration
 
-Version: v0.4.0 | Updated: 2026-07-18
+Version: v1.0.0 | Updated: 2026-07-19
 
 ## Config Sources (priority high to low)
 
@@ -61,7 +61,31 @@ Version: v0.4.0 | Updated: 2026-07-18
 |:---------|:-------|:-----|
 | `DATACORE_NEWS_SOURCES` | `cls,wallstreet,eastmoney` | 启用的新闻源 |
 | `DATACORE_NEWS_CACHE_TTL` | `1800` | 新闻缓存 TTL（秒） |
-| `DATACORE_MACRO_SOURCES` | `eastmoney` | 启用的宏观数据源 |
+| `DATACORE_MACRO_SOURCES` | `national_bureau,pboc,eastmoney` | 启用的宏观数据源（v0.5.0 更新） |
 | `DATACORE_MACRO_CACHE_TTL` | `86400` | 宏观数据缓存 TTL（秒） |
+
+### WebSocket 配置（v1.0.0 新增）
+| 环境变量 | 默认值 | 说明 |
+|:---------|:-------|:-----|
+| `DATACORE_WS_URL` | `wss://example.com/market` | WebSocket 服务地址 |
+| `DATACORE_WS_RECONNECT_INTERVAL` | `5` | 重连间隔（秒） |
+| `DATACORE_WS_MAX_RECONNECT` | `10` | 最大重连次数 |
+| `DATACORE_WS_HEARTBEAT_INTERVAL` | `30` | 心跳间隔（秒） |
+| `DATACORE_WS_SUBSCRIBE_SYMBOLS` | 空 | 默认订阅品种列表（逗号分隔） |
+
+### 告警配置（v1.0.0 新增）
+| 环境变量 | 默认值 | 说明 |
+|:---------|:-------|:-----|
+| `DATACORE_ALERT_FILE_PATH` | `~/.datacore/alerts.log` | 告警日志文件路径 |
+| `DATACORE_ALERT_WEBHOOK_URL` | 空 | 告警 Webhook 回调地址 |
+| `DATACORE_ALERT_PRICE_THRESHOLD` | `0.05` | 价格突破阈值（5%） |
+| `DATACORE_ALERT_VOLATILITY_THRESHOLD` | `0.03` | 波动率异常阈值（3%） |
+| `DATACORE_ALERT_STALE_SECONDS` | `300` | 数据延迟告警阈值（秒） |
+
+### 基准测试配置（v1.0.0 新增）
+| 环境变量 | 默认值 | 说明 |
+|:---------|:-------|:-----|
+| `DATACORE_BENCHMARK_ITERATIONS` | `100` | 基准测试迭代次数 |
+| `DATACORE_BENCHMARK_WARMUP` | `10` | 预热迭代次数 |
 
 > **安全提示**: API Key 等敏感信息请通过环境变量配置，**禁止硬编码到代码中**。

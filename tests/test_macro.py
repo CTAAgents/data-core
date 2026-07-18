@@ -313,11 +313,13 @@ class TestMacroDataProvider:
 
     # ── _init_sources ──
 
-    def test_init_sources_loads_eastmoney(self):
-        """_init_sources 成功加载 EastMoneyMacroProvider。"""
+    def test_init_sources_loads_providers(self):
+        """_init_sources 按优先级加载三个数据源。"""
         provider = MacroDataProvider()
-        assert len(provider.sources) == 1
-        assert provider.sources[0].name == "eastmoney_macro"
+        assert len(provider.sources) == 3
+        assert provider.sources[0].name == "national_bureau"
+        assert provider.sources[1].name == "pboc"
+        assert provider.sources[2].name == "eastmoney_macro"
 
     def test_init_sources_handles_import_error(self):
         """EastMoneyMacroProvider 导入失败时 sources 为空。"""
@@ -331,7 +333,10 @@ class TestMacroDataProvider:
         with patch("datacore.macro.providers.eastmoney_macro.EastMoneyMacroProvider",
                    side_effect=Exception("Constructor failed")):
             provider = MacroDataProvider()
-        assert len(provider.sources) == 0
+        # 前两个 source（national_bureau, pboc）正常加载
+        assert len(provider.sources) == 2
+        assert provider.sources[0].name == "national_bureau"
+        assert provider.sources[1].name == "pboc"
 
     # ── get ──
 

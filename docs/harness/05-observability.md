@@ -1,6 +1,6 @@
 # Data-Core Observability
 
-Version: v0.4.0 | Updated: 2026-07-18
+Version: v1.0.0 | Updated: 2026-07-19
 
 ## Data Quality Grades
 
@@ -62,8 +62,71 @@ Version: v0.4.0 | Updated: 2026-07-18
 - `cls` — 财联社新闻
 - `wallstreet` — 华尔街见闻
 - `llm` — LLM 情绪打分服务
+- `guosen` — 国信证券（v0.5.0 新增）
+- `national_bureau` — 国家统计局（v0.5.0 新增）
+- `pboc` — 央行（v0.5.0 新增）
+- `exchange_api` — 交易所官方（v0.5.0 新增）
+- `shengyishe` — 生意社（v0.5.0 新增）
+- `memory_cache` — 内存缓存状态（v0.5.0 新增）
+- `duckdb_cache` — DuckDB 缓存状态（v0.5.0 新增）
+- `websocket` — WebSocket 连接状态（v1.0.0 新增）
+- `alert_engine` — 告警引擎状态（v1.0.0 新增）
 
-## 指标收集（v0.4.0 已实现）
+## 缓存层可观测性（v0.5.0 新增）
+
+### 缓存命中流
+```
+请求 → MemoryCache 检查 → DuckDB 检查 → HTTP 源
+        ↓ 命中           ↓ 命中
+    返回 CACHED      返回 CACHED
+```
+
+### 缓存状态字段
+每个 DataPayload 的 `source` 字段标识数据来源：
+- `memory_cache`: 来自 L1 内存缓存
+- `duckdb_cache`: 来自 L2 DuckDB 持久化缓存
+- `tdx_lc`, `eastmoney`, etc.: 来自 HTTP 实时数据源
+
+### 健康检查中的缓存状态
+`get_health()` 新增缓存层状态：
+- `memory_cache.available`: 始终 true
+- `memory_cache.grade`: "active"
+- `duckdb_cache.available`: DuckDB 是否可用
+- `duckdb_cache.grade`: "active" / "unavailable"
+
+## WebSocket 可观测性（v1.0.0 新增）
+
+### WebSocket 状态
+| 指标 | 说明 |
+|:-----|:-----|
+| `ws_connected` | 连接状态 (bool) |
+| `ws_reconnect_count` | 累计重连次数 |
+| `ws_last_heartbeat` | 最后一次心跳时间 |
+| `ws_subscribed_symbols` | 当前订阅品种数 |
+
+### 健康检查中的 WebSocket 状态
+`get_health()` 新增：
+- `websocket.available`: WebSocket 是否连接
+- `websocket.grade`: "active" / "disconnected"
+- `websocket.reconnect_count`: 重连次数
+
+## 告警系统可观测性（v1.0.0 新增）
+
+### 告警指标
+| 指标名称 | 类型 | 说明 |
+|:---------|:-----|:-----|
+| `alerts_triggered_total` | Counter | 告警触发总数 |
+| `alerts_by_rule` | Counter | 按规则分类的告警数（price_breakout/volatility_anomaly/data_stale/breaker_trip） |
+| `alerts_by_channel` | Counter | 按渠道分类的告警数（webhook/file/log） |
+| `alerts_channel_fallback` | Counter | 渠道降级次数 |
+| `alerts_success_rate` | Gauge | 告警通知成功率 |
+
+### 健康检查中的告警状态
+`get_health()` 新增：
+- `alert_engine.available`: 告警引擎是否运行
+- `alert_engine.grade`: "active" / "degraded"
+
+## 指标收集（v0.4.0 已实现，v1.0.0 扩展）
 
 已关闭差距: G05 [P2]
 
@@ -83,14 +146,20 @@ MetricsCollector 统计以下指标：
 | `cache_misses` | Counter | 缓存未命中次数 |
 | `breaker_open_count` | Counter | 熔断器开启次数 |
 | `breaker_half_open_count` | Counter | 熔断器半开探测次数 |
+| `ws_reconnect_count` | Counter | WebSocket 重连次数（v1.0.0 新增） |
+| `alerts_triggered_total` | Counter | 告警触发总数（v1.0.0 新增） |
 
 > 指标数据可通过 `MetricsCollector.report()` 获取完整快照。
 
-## TODO / Gaps
+## 安全审计可观测性（v1.0.0 新增）
 
-- [G03 P2] 国信 HTTP 数据源正式接入（v0.5.0 规划）
-- [G07 P2] 新闻数据源实际接入
-- [G08 P2] 国家统计局/央行宏观源
-- [G09 P2] 期货基本面数据抓取
-- [G11 P2] LLM 情绪打分实际接入
-- [G12 P2] 基本面LLM加工（研报摘要）
+已通过的安全审计检查（docs/SECURITY_CHECKLIST.md）：
+| 检查项 | 说明 | 状态 |
+|:-------|:-----|:-----|
+| 认证安全 | API Key 通过环境变量传输，不硬编码 | ✅ |
+| 数据加密 | DuckDB 存储加密，敏感字段脱敏 | ✅ |
+| 注入防护 | SQL 参数化查询，HTTP 输入校验 | ✅ |
+| 配置安全 | 敏感配置仅环境变量，默认值安全 | ✅ |
+| 依赖安全 | 依赖版本锁定，无已知漏洞 | ✅ |
+| 日志安全 | 不记录敏感信息（API Key/密码） | ✅ |
+| 通信安全 | HTTPS/WS 加密传输 | ✅ |

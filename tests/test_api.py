@@ -124,7 +124,9 @@ class TestUnifiedDataProvider:
         """provider 返回 None 时返回 UNAVAILABLE"""
         mock_futures = MagicMock()
         mock_futures.get.return_value = None
-        with patch('datacore.api._get_futures', return_value=mock_futures):
+        with patch('datacore.api._get_futures', return_value=mock_futures), \
+             patch('datacore.api._get_cache', return_value=MagicMock()), \
+             patch('datacore.api._get_duckdb', return_value=None):
             dc = UnifiedDataProvider()
             payload = dc.get('RB', DataType.OHLCV)
             assert not payload.available
@@ -332,7 +334,9 @@ class TestUnifiedDataProvider:
             market=MarketType.FUTURES, grade=SourceGrade.UNAVAILABLE,
         )
 
-        with patch('datacore.api._get_futures', return_value=mock_futures):
+        with patch('datacore.api._get_futures', return_value=mock_futures), \
+             patch('datacore.api._get_cache', return_value=MagicMock()), \
+             patch('datacore.api._get_duckdb', return_value=None):
             dc = UnifiedDataProvider()
             payload = dc.get('RB', DataType.MARKET_STATE)
 
@@ -341,7 +345,9 @@ class TestUnifiedDataProvider:
 
     def test_get_market_state_exception(self):
         """市场制度管道异常时返回 UNAVAILABLE"""
-        with patch('datacore.api._get_futures', side_effect=ValueError('bad data')):
+        with patch('datacore.api._get_futures', side_effect=ValueError('bad data')), \
+             patch('datacore.api._get_cache', return_value=MagicMock()), \
+             patch('datacore.api._get_duckdb', return_value=None):
             dc = UnifiedDataProvider()
             payload = dc.get('RB', DataType.MARKET_STATE)
 
@@ -428,7 +434,7 @@ class TestUnifiedDataProvider:
             patch("datacore.api._get_macro", return_value=mock_provider),
         ):
             result = dc.get_health()
-            assert result["version"] == "0.4.0"
+            assert result["version"] == "1.0.0"
 
     def test_get_health_status(self):
         """全源可用时返回 healthy。"""

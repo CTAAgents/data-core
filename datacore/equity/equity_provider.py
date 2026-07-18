@@ -4,14 +4,14 @@ import time
 from typing import Optional
 from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
-from datacore.equity.providers import TencentProvider, EastMoneyEquityProvider
+from datacore.equity.providers import TencentProvider, EastMoneyEquityProvider, GuosenProvider
 
 
 class EquityDataProvider:
-    """A 股数据提供者 — 多源降级链: 腾讯 → 东方财富。"""
+    """A 股数据提供者 — 多源降级链: 腾讯 → 东方财富 → 国信。"""
 
     def __init__(self):
-        self.sources = [TencentProvider(), EastMoneyEquityProvider()]
+        self.sources = [TencentProvider(), EastMoneyEquityProvider(), GuosenProvider()]
 
     def get(self, symbol: str, data_type: DataType,
             params: dict | None = None,

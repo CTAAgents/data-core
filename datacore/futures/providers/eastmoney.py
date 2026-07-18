@@ -59,7 +59,11 @@ class EastMoneyFuturesProvider(FuturesDataSource):
         return None
 
     def fetch_basis(self, symbol: str) -> Optional[BasisData]:
-        """从东方财富获取基差数据（近似计算：现货指数 - 期货主力）。"""
+        """从东方财富获取基差数据（近似计算：现货指数 - 期货主力）。
+        
+        注意: D01 技术债 — 此方法使用近似算法。
+        真实基差数据请使用 ShengYiSheProvider。
+        """
         try:
             with httpx.Client(timeout=10) as c:
                 resp = c.get(

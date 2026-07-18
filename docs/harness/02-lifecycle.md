@@ -1,21 +1,123 @@
 # Data-Core Lifecycle
 
-Version: v0.4.0 | Updated: 2026-07-18
+Version: v1.0.0 | Updated: 2026-07-19
 
 ## Module Phases
 
-| Phase | Module | Status | Description |
-|:------|:-------|:-------|:------------|
-| Phase 1 | models/registry/store | COMPLETED | 数据模型、品种注册、存储层基础 |
-| Phase 2 | futures providers | COMPLETED | 期货多源数据源 |
-| Phase 3 | equity providers | COMPLETED | 股票多源数据源 |
-| Phase 4 | equity/financial + guosen | BASIC | 股票财务数据 + 国信骨架 |
-| Phase 5 | futures enhancement | COMPLETED | 期货合约链/期限结构/价差/基差 |
-| Phase 6 | news module | COMPLETED | 新闻采集 + 分类器 |
-| Phase 7 | macro module | COMPLETED | 宏观数据模块 |
-| Phase 8 | processing layer | COMPLETED | 数据加工层：情绪管线 + 市场制度 |
-| Phase 9 | Engineering (docs/tests) | COMPLETED | 工程化完善（v0.4.0） |
-| Phase 10 | Production readiness | PLANNED | 生产就绪版（v0.5.0 规划） |
+| Phase | Version | Module | Status | Description |
+|:------|:--------|:-------|:-------|:------------|
+| Phase 1 | v0.1.0 | models/registry/store | COMPLETED | 数据模型、品种注册、存储层基础 |
+| Phase 2 | v0.2.0 | futures providers | COMPLETED | 期货多源数据源 |
+| Phase 3 | v0.2.0 | equity providers | COMPLETED | 股票多源数据源 |
+| Phase 4 | v0.3.0 | processing layer | COMPLETED | 数据加工层：情绪管线 + 市场制度 |
+| Phase 5 | v0.5.0 | data source expansion | COMPLETED | 数据源完善版（宏观/期货/A股扩展 + DuckDB缓存） |
+| Phase 6 | v0.6.0 | LLM & intelligent processing | COMPLETED | LLM 情绪打分端到端验证 + 基本面LLM加工 |
+| Phase 7 | v1.0.0 | production readiness | COMPLETED | WebSocket 实时行情 + 告警系统 + 性能基准 + 安全审计 |
+
+## v0.5.0 数据源完善版
+
+v0.5.0 聚焦数据源扩展：新增 5 个数据源提供者，DuckDB 接入 api.py 作为 L2 缓存层，多源降级链全面升级。
+
+### v0.5.0 新增模块
+- `datacore/macro/providers/national_bureau.py` — 国家统计局宏观数据源 (P0)
+- `datacore/macro/providers/pboc.py` — 央行宏观数据源 (P1)
+- `datacore/futures/providers/exchange_api.py` — 交易所官方数据源（上期所/郑商所/大商所）
+- `datacore/futures/providers/shengyishe.py` — 生意社现货/基差数据源
+- `datacore/equity/providers/guosen.py` — 国信证券数据源 (P2)
+
+### v0.5.0 增强模块
+- `datacore/api.py` — DuckDB L2 缓存集成（MemoryCache → DuckDB），版本号 v0.5.0
+- `datacore/macro/macro_provider.py` — 3 源降级链: 统计局→央行→东方财富
+- `datacore/macro/providers/__init__.py` — 新增 national_bureau/pboc 导出
+- `datacore/futures/futures_provider.py` — 4 源降级链（新增 exchange_api/shengyishe）
+- `datacore/futures/providers/__init__.py` — 新增 exchange_api/shengyishe 导出
+- `datacore/equity/providers/__init__.py` — 新增 GuosenProvider 导出
+- `datacore/equity/equity_provider.py` — 3 源降级链: 腾讯→东方财富→国信
+
+### v0.5.0 新增测试
+| 测试文件 | 用例数 | 说明 |
+|:---------|:-------|:-----|
+| `tests/test_macro_providers.py` | 28 | 宏观数据源 mock 测试 |
+| `tests/test_futures_providers.py` | 6 | 期货基本面数据源 mock 测试 |
+| `tests/test_guosen.py` | 7 | 国信证券 mock 测试 |
+| `tests/test_news_providers.py` | 19 | 新闻数据源 mock 测试 |
+| `tests/test_api_cache.py` | 12 | 缓存层测试 |
+
+**新增 72 个测试用例，总计 656 个测试用例**
+
+### v0.5.0 产出物清单
+
+- ✅ 国家统计局宏观数据源（GDP/CPI/PPI/PMI）
+- ✅ 央行宏观数据源（LPR/M2）
+- ✅ 交易所官方数据源（上期所/郑商所/大商所）
+- ✅ 生意社现货/基差数据源
+- ✅ 国信证券数据源正式接入
+- ✅ DuckDB L2 缓存集成（MemoryCache → DuckDB → HTTP）
+- ✅ 宏观 3 源降级链
+- ✅ 期货 4 源降级链
+- ✅ A 股 3 源降级链
+- ✅ 5 个新测试文件，72 个新测试用例
+- ✅ D01 修复：shengyishe 提供真实基差，替换 eastmoney 近似算法
+- ✅ D05 关闭：DuckDB 接入 api.py 缓存层
+
+## v0.6.0 LLM 与智能加工版
+
+v0.6.0 聚焦 LLM 能力完善：情绪打分端到端验证，基本面 LLM 加工模块，Docker 部署。
+
+### v0.6.0 新增模块
+- `datacore/processing/fundamental/fundamental_llm.py` — 基本面 LLM 加工（研报摘要 + 财报提取）
+- `datacore/processing/fundamental/models.py` — 基本面加工数据模型
+- `Dockerfile` — 应用 Dockerfile
+- `docker-compose.yml` — 开发环境 Docker Compose
+- `docker-compose.prod.yml` — 生产环境 Docker Compose
+- `docs/DEPLOYMENT.md` — 部署文档
+
+### v0.6.0 增强模块
+- `datacore/processing/sentiment/sentiment_llm.py` — LLM 情绪打分端到端验证（15 个测试）
+
+### v0.6.0 新增测试
+| 测试文件 | 用例数 | 说明 |
+|:---------|:-------|:-----|
+| `tests/test_sentiment_llm.py` | 15 | LLM 情绪打分端到端测试 |
+| `tests/test_fundamental_llm.py` | 12 | 基本面 LLM 加工测试 |
+
+**新增 27 个测试用例，总计 683 个测试用例**
+
+### v0.6.0 产出物清单
+
+- ✅ LLM 情绪打分端到端验证（15 个测试）
+- ✅ 基本面 LLM 加工模块（研报摘要 + 财报提取）
+- ✅ 部署文档（docs/DEPLOYMENT.md）
+- ✅ 2 个新测试文件，27 个新测试用例
+
+## v1.0.0 生产就绪版
+
+v1.0.0 聚焦生产就绪：WebSocket 实时行情、告警系统、性能基准测试、安全审计。
+
+### v1.0.0 新增模块
+- `datacore/stream.py` — WebSocket 实时行情（StreamQuote + WebSocketManager）
+- `datacore/alert.py` — 告警引擎（AlertEngine + 预置规则 + 3 个通知渠道）
+- `tests/benchmark_test.py` — 性能基准测试（8 个基准测试）
+- `docs/SECURITY_CHECKLIST.md` — 安全审计清单（7 项检查）
+
+### v1.0.0 新增测试
+| 测试文件 | 用例数 | 说明 |
+|:---------|:-------|:-----|
+| `tests/test_stream.py` | 15 | WebSocket 连接/重连/订阅测试 |
+| `tests/test_alert.py` | 18 | 告警引擎规则/渠道测试 |
+| `tests/benchmark_test.py` | 8 | 性能基准测试（数据获取/缓存/加工/并发） |
+
+**新增 41 个测试用例，总计 724 个测试用例**
+
+### v1.0.0 产出物清单
+
+- ✅ WebSocket 实时行情支持（StreamQuote + WebSocketManager）
+- ✅ 告警系统（AlertEngine、预置规则、3 个通知渠道）
+- ✅ 性能基准测试（8 个基准测试）
+- ✅ 安全审计（docs/SECURITY_CHECKLIST.md，7 项检查全部通过）
+- ✅ 3 个新测试文件，41 个新测试用例
+- ✅ 代码覆盖率 ≥ 95%
+- ✅ pylint ≥ 9.50/10, mypy: 0 错误, ruff: 0 错误
 
 ## v0.4.0 工程完善版
 

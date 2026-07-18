@@ -4,14 +4,14 @@ import time
 from typing import Optional
 from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
-from datacore.futures.providers import TdxLcProvider, EastMoneyFuturesProvider
+from datacore.futures.providers import TdxLcProvider, EastMoneyFuturesProvider, ExchangeApiProvider, ShengYiSheProvider
 
 
 class FuturesDataProvider:
-    """期货数据提供者 — 多源降级链: TQ-Local → 东方财富。"""
+    """期货数据提供者 — 多源降级链: TQ-Local → 东方财富 → 交易所 → 生意社。"""
 
     def __init__(self):
-        self.sources = [TdxLcProvider(), EastMoneyFuturesProvider()]
+        self.sources = [TdxLcProvider(), EastMoneyFuturesProvider(), ExchangeApiProvider(), ShengYiSheProvider()]
 
     def get(self, symbol: str, data_type: DataType,
             params: dict | None = None) -> Optional[DataPayload]:

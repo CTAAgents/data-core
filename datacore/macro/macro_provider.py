@@ -21,7 +21,17 @@ class MacroDataProvider:
         self._init_sources()
 
     def _init_sources(self):
-        """懒加载数据源。"""
+        """懒加载数据源（优先级: 统计局 → 央行 → 东方财富）。"""
+        try:
+            from datacore.macro.providers.national_bureau import NationalBureauProvider
+            self.sources.append(NationalBureauProvider())
+        except Exception:
+            pass
+        try:
+            from datacore.macro.providers.pboc import PboCProvider
+            self.sources.append(PboCProvider())
+        except Exception:
+            pass
         try:
             from datacore.macro.providers.eastmoney_macro import EastMoneyMacroProvider
             self.sources.append(EastMoneyMacroProvider())

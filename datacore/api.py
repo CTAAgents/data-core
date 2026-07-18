@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from .models.enums import DataType, MarketType, SourceGrade
 from .models.payload import DataPayload
+from .models.ohlcv import KBar, KlineData
 from .registry.symbol_registry import SymbolRegistry
 
 _futures_provider: Any = None
@@ -83,6 +84,30 @@ def _get_breaker(name: str) -> Any:
     return _breaker_pool[name]
 
 
+_cache: Any = None
+_duckdb_store: Any = None
+
+
+def _get_cache():
+    global _cache
+    if _cache is None:
+        from .store.cache import MemoryCache
+        _cache = MemoryCache()
+    return _cache
+
+
+def _get_duckdb():
+    global _duckdb_store
+    if _duckdb_store is None:
+        try:
+            from .store.duckdb import DuckDBStore
+            _duckdb_store = DuckDBStore()
+            _duckdb_store.init_schema()
+        except ImportError:
+            _duckdb_store = None
+    return _duckdb_store
+
+
 class UnifiedDataProvider:
     """Data-Core unified data entry point.
 
@@ -118,6 +143,12 @@ class UnifiedDataProvider:
                 errors=[f"Unknown symbol: {symbol}"],
             )
 
+        # ── 缓存层（v0.5.0: MemoryCache → DuckDB）──
+        cache_key = f"{symbol}:{data_type.value}:{self._cache_params_key(params)}"
+        cached = self._check_cache(cache_key)
+        if cached is not None:
+            return cached
+
         payload: Optional[DataPayload] = None
 
         if market == MarketType.FUTURES:
@@ -133,6 +164,11 @@ class UnifiedDataProvider:
                 errors=[f"{market} module does not support {data_type}"],
                 collected_at=collected_at,
             )
+
+        # ── 缓存写回（v0.5.0）──
+        if payload.available:
+            self._write_cache(cache_key, payload)
+
         return payload
 
     def _get_news_data(self, symbol: str, params: dict | None,
@@ -296,6 +332,86 @@ class UnifiedDataProvider:
                 collected_at=collected_at,
             )
 
+    # ─────────────────────────────────────────────────────────
+    # 缓存层辅助方法（v0.5.0: MemoryCache → DuckDB → HTTP）
+    # ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _cache_params_key(params: dict | None) -> str:
+        """生成缓存参数键，只取关键参数排序后拼接。"""
+        if not params:
+            return "default"
+        keys = sorted(params.keys())
+        return ":".join(f"{k}={params[k]}" for k in keys)
+
+    def _check_cache(self, cache_key: str) -> Optional[DataPayload]:
+        """MemoryCache → DuckDB 顺序检查。"""
+        # L1: MemoryCache
+        mem = _get_cache()
+        cached = mem.get(cache_key)
+        if cached is not None and isinstance(cached, dict):
+            try:
+                dp = DataPayload(**cached)
+                dp.grade = SourceGrade.CACHED
+                return dp
+            except (TypeError, ValueError):
+                pass
+
+        # L2: DuckDB（仅对 OHLCV 类型生效）
+        if _get_duckdb() is not None:
+            try:
+                parts = cache_key.split(":")
+                if len(parts) >= 3 and parts[1] == "ohlcv":
+                    symbol = parts[0]
+                    period = "daily"
+                    for seg in parts[2:]:
+                        if seg.startswith("period="):
+                            period = seg.split("=", 1)[1]
+                            break
+                    db = _get_duckdb()
+                    rows = db.load_kline(symbol, period, days=120)
+                    if rows:
+                        bars_data = [
+                            {k: r[k] for k in ("date", "open", "high", "low",
+                                                "close", "volume", "amount")}
+                            for r in rows
+                        ]
+                        bars = [KBar(**b) for b in bars_data]
+                        if bars:
+                            kd = KlineData(symbol=symbol, period=period,
+                                           bars=bars, source="duckdb_cache")
+                            return DataPayload(
+                                symbol=symbol, data_type=DataType.OHLCV,
+                                market=MarketType.FUTURES,
+                                data=kd, source="duckdb_cache",
+                                grade=SourceGrade.CACHED,
+                                collected_at=time.time(),
+                            )
+            except Exception:
+                pass
+
+        return None
+
+    def _write_cache(self, cache_key: str, payload: DataPayload) -> None:
+        """写入 MemoryCache + DuckDB。"""
+        if not payload.available:
+            return
+
+        # L1: MemoryCache
+        import dataclasses
+        mem = _get_cache()
+        mem.set(cache_key, dataclasses.asdict(payload))
+
+        # L2: DuckDB（仅对 OHLCV 类型生效）
+        db = _get_duckdb()
+        if db is not None and payload.data_type == DataType.OHLCV and hasattr(payload.data, "bars"):
+            try:
+                bars_dict = [dataclasses.asdict(b) for b in payload.data.bars]
+                period = getattr(payload.data, "period", "daily")
+                db.store_kline(payload.symbol, period, bars_dict)
+            except Exception:
+                pass
+
     def get_batch(self, symbols: list[str], data_type: DataType,
                   params: dict | None = None) -> dict[str, DataPayload]:
         """Batch fetch data for multiple symbols."""
@@ -336,10 +452,24 @@ class UnifiedDataProvider:
         for s in _get_macro().sources:
             sources[s.name] = self._probe_source(s)
 
+        # ── 缓存层状态（v0.5.0）──
+        mem = _get_cache()
+        sources["memory_cache"] = {
+            "available": True,
+            "latency_ms": 0,
+            "grade": "active",
+        }
+        db = _get_duckdb()
+        sources["duckdb_cache"] = {
+            "available": db is not None,
+            "latency_ms": 0,
+            "grade": "active" if db is not None else "unavailable",
+        }
+
         any_ok = any(v.get("available", False) for v in sources.values())
         return {
             "status": "healthy" if any_ok else "unavailable",
-            "version": "0.4.0",
+            "version": "1.0.0",
             "sources": sources,
             "timestamp": time.time(),
         }

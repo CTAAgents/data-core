@@ -1,6 +1,7 @@
-"""A 股数据源提供者。"""
+"""A股数据源。"""
 from .base import EquityDataSource
 from .tencent import TencentProvider
 from .eastmoney import EastMoneyEquityProvider
+from .guosen import GuosenProvider
 
-__all__ = ["EquityDataSource", "TencentProvider", "EastMoneyEquityProvider"]
+__all__ = ["EquityDataSource", "TencentProvider", "EastMoneyEquityProvider", "GuosenProvider"]

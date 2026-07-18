@@ -65,13 +65,15 @@ class TestEquityDataSourceBase:
 class TestEquityDataProvider:
     """EquityDataProvider — 多源降级链。"""
 
-    def test_init_creates_two_sources(self):
+    def test_init_creates_three_sources(self):
         provider = EquityDataProvider()
-        assert len(provider.sources) == 2
+        assert len(provider.sources) == 3
         from datacore.equity.providers.tencent import TencentProvider
         from datacore.equity.providers.eastmoney import EastMoneyEquityProvider
+        from datacore.equity.providers.guosen import GuosenProvider
         assert isinstance(provider.sources[0], TencentProvider)
         assert isinstance(provider.sources[1], EastMoneyEquityProvider)
+        assert isinstance(provider.sources[2], GuosenProvider)
 
     def test_get_first_source_available_returns_result(self):
         provider = EquityDataProvider()

@@ -9,6 +9,7 @@ dist/
 build/
 .tox/
 venv/
+.venv/
 .env
 .env.*
 !.env.example
