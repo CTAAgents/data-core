@@ -8,10 +8,16 @@ from typing import Optional
 
 import httpx
 
+import re
+import time
 from datacore.config import get_config
 from datacore.futures.providers.base import FuturesDataSource
 from datacore.models.ohlcv import KBar, KlineData, QuoteData
 from datacore.models.enums import DataType
+from datacore.models.futures import (
+    ContractChain, TermStructure, TermStructurePoint,
+    SpreadData,
+)
 
 FUTURES_MARKET = "92"
 PERIOD_MAP = {"daily": "1d", "60m": "60m", "120m": "120m", "240m": "240m", "weekly": "1w"}
@@ -20,7 +26,11 @@ PERIOD_MAP = {"daily": "1d", "60m": "60m", "120m": "120m", "240m": "240m", "week
 class TdxLcProvider(FuturesDataSource):
     name = "tdx_lc"
     priority = 0
-    supported_types = {DataType.OHLCV, DataType.QUOTE, DataType.TECHNICAL}
+    supported_types = {
+        DataType.OHLCV, DataType.QUOTE, DataType.TECHNICAL,
+        DataType.FUTURES_CONTRACT_CHAIN, DataType.FUTURES_TERM_STRUCTURE,
+        DataType.FUTURES_SPREAD,
+    }
 
     def __init__(self, url: Optional[str] = None, timeout: Optional[int] = None):
         config = get_config()
@@ -112,4 +122,109 @@ class TdxLcProvider(FuturesDataSource):
             high=_f("Max"), low=_f("Min"),
             pre_close=_f("LastClose"), volume=_f("Volume"),
             update_time=str(snap.get("UpdateTime", "")),
+        )
+
+    def _list_symbol_contracts(self, symbol: str) -> list[str]:
+        """获取某个品种的所有合约代码（按持仓量排序，主力在前）。"""
+        self._load_contracts()
+        cache = self._contract_cache or {}
+        symbol_upper = symbol.upper()
+        codes = [code for alpha, code in cache.items() if alpha == symbol_upper]
+        if not codes:
+            pattern = re.compile(rf"^{symbol_upper}\d{{3,4}}$")
+            all_codes = [
+                code for code in cache.values()
+                if pattern.match(code.split(".")[0])
+            ]
+            codes = sorted(set(all_codes))
+
+        snap_list = self._fetch_contract_snapshots(codes)
+        codes.sort(key=lambda c: -snap_list.get(c, {}).get("Hold", 0) if isinstance(snap_list, dict) else 0)
+        return codes
+
+    def _fetch_contract_snapshots(self, codes: list[str]) -> dict:
+        """批量获取合约快照，返回 {code: snapshot}。"""
+        if not codes:
+            return {}
+        resp = self._post("get_market_snapshot", {"stock_code": codes[0]})
+        result = resp.get("Value", resp) if isinstance(resp, dict) else resp
+        if isinstance(result, dict) and "Value" in result:
+            result = result["Value"]
+        if isinstance(result, list):
+            return {item.get("Code", ""): item for item in result}
+        if isinstance(result, dict):
+            return result
+        return {}
+
+    def fetch_contract_chain(self, symbol: str, num_contracts: int = 5,
+                             period: str = "daily",
+                             days: int = 120) -> Optional[ContractChain]:
+        """获取合约链数据 — 按持仓量取前 N 个合约的 K线。"""
+        contracts = self._list_symbol_contracts(symbol)
+        if not contracts:
+            return None
+        selected = contracts[:num_contracts]
+        chain = ContractChain(symbol=symbol, contracts=selected)
+        for contract in selected:
+            kd = self.fetch_kline(contract, period, days)
+            if kd:
+                chain.klines[contract] = kd
+        return chain if chain.klines else None
+
+    def fetch_term_structure(self, symbol: str) -> Optional[TermStructure]:
+        """获取期限结构快照 — 所有合约的最新价格和收益率。"""
+        contracts = self._list_symbol_contracts(symbol)
+        if not contracts:
+            return None
+        points = []
+        prev_price = 0.0
+        for i, contract in enumerate(contracts):
+            q = self.fetch_quote(contract)
+            if not q or not q.last_price:
+                continue
+            price = q.last_price
+            month_code = contract.split(".")[0]
+            yld_front = 0.0
+            yld_annual = 0.0
+            if prev_price > 0:
+                yld_front = (price - prev_price) / prev_price
+                yld_annual = yld_front * 12
+            points.append(TermStructurePoint(
+                contract=contract,
+                month=month_code,
+                price=price,
+                yield_from_front=yld_front,
+                yield_annual=yld_annual,
+            ))
+            prev_price = price
+        if not points:
+            return None
+        return TermStructure(symbol=symbol, points=points, snapshot_at=time.time())
+
+    def fetch_spread(self, symbol: str, near_contract: str, far_contract: str,
+                     period: str = "daily", days: int = 120) -> Optional[SpreadData]:
+        """获取跨期价差 — 计算两个合约的价差时间序列。"""
+        near_k = self.fetch_kline(near_contract, period, days)
+        far_k = self.fetch_kline(far_contract, period, days)
+        if not near_k or not far_k:
+            return None
+        near_map = {b.date: b for b in near_k.bars}
+        spread_series = []
+        for far_bar in far_k.bars:
+            near_bar = near_map.get(far_bar.date)
+            if near_bar:
+                spread = far_bar.close - near_bar.close
+                spread_series.append({
+                    "date": far_bar.date,
+                    "near_close": near_bar.close,
+                    "far_close": far_bar.close,
+                    "spread": spread,
+                })
+        if not spread_series:
+            return None
+        return SpreadData(
+            symbol=symbol,
+            near_contract=near_contract,
+            far_contract=far_contract,
+            spread_series=spread_series,
         )

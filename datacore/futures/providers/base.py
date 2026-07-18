@@ -1,10 +1,13 @@
 """FuturesDataSource 抽象基类。"""
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Optional
-from datacore.models.enums import DataType, SourceGrade
-from datacore.models.payload import DataPayload
+from typing import Optional
+from datacore.models.enums import DataType
 from datacore.models.ohlcv import KlineData, QuoteData
+from datacore.models.futures import (
+    ContractChain, TermStructure, SpreadData,
+    BasisData, PositionRankData, WarehouseReceiptData,
+)
 
 
 class FuturesDataSource(ABC):
@@ -19,6 +22,32 @@ class FuturesDataSource(ABC):
     @abstractmethod
     def fetch_quote(self, symbol: str) -> Optional[QuoteData]:
         """获取实时行情。"""
+
+    def fetch_contract_chain(self, symbol: str, num_contracts: int = 5,
+                             period: str = "daily", days: int = 120) -> Optional[ContractChain]:
+        """获取合约链数据（多合约 K线）。"""
+        return None
+
+    def fetch_term_structure(self, symbol: str) -> Optional[TermStructure]:
+        """获取期限结构快照。"""
+        return None
+
+    def fetch_spread(self, symbol: str, near_contract: str, far_contract: str,
+                     period: str = "daily", days: int = 120) -> Optional[SpreadData]:
+        """获取跨期价差数据。"""
+        return None
+
+    def fetch_basis(self, symbol: str) -> Optional[BasisData]:
+        """获取基差数据。"""
+        return None
+
+    def fetch_position_rank(self, symbol: str) -> Optional[PositionRankData]:
+        """获取持仓排名数据。"""
+        return None
+
+    def fetch_warehouse_receipts(self, symbol: str) -> Optional[WarehouseReceiptData]:
+        """获取仓单数据。"""
+        return None
 
     def check_available(self) -> bool:
         return True

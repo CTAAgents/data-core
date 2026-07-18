@@ -23,6 +23,18 @@ class FuturesDataProvider:
             return self._get_kline(symbol, period, days)
         elif data_type == DataType.QUOTE:
             return self._get_quote(symbol)
+        elif data_type == DataType.FUTURES_CONTRACT_CHAIN:
+            return self._get_contract_chain(symbol, params)
+        elif data_type == DataType.FUTURES_TERM_STRUCTURE:
+            return self._get_term_structure(symbol)
+        elif data_type == DataType.FUTURES_SPREAD:
+            return self._get_spread(symbol, params)
+        elif data_type == DataType.FUTURES_BASIS:
+            return self._get_basis(symbol)
+        elif data_type == DataType.FUTURES_POSITION:
+            return self._get_position_rank(symbol)
+        elif data_type == DataType.FUTURES_WAREHOUSE_RECEIPT:
+            return self._get_warehouse_receipts(symbol)
         return None
 
     def _get_kline(self, symbol: str, period: str, days: int) -> Optional[DataPayload]:
@@ -62,6 +74,135 @@ class FuturesDataProvider:
                         market=type(self).__module__,
                         data=qd, source=src.name,
                         grade=SourceGrade.PRIMARY,
+                        collected_at=time.time(),
+                    )
+            except Exception:
+                continue
+        return None
+
+    def _get_contract_chain(self, symbol: str, params: dict) -> Optional[DataPayload]:
+        num_contracts = int(params.get("num_contracts", 5))
+        period = params.get("period", "daily")
+        days = int(params.get("days", 120))
+        for src in self.sources:
+            if not src.check_available():
+                continue
+            if DataType.FUTURES_CONTRACT_CHAIN not in src.supported_types:
+                continue
+            try:
+                chain = src.fetch_contract_chain(symbol, num_contracts, period, days)
+                if chain and chain.contracts:
+                    grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
+                    return DataPayload(
+                        symbol=symbol, data_type=DataType.FUTURES_CONTRACT_CHAIN,
+                        market=type(self).__module__,
+                        data=chain, source=src.name, grade=grade,
+                        collected_at=time.time(),
+                    )
+            except Exception:
+                continue
+        return None
+
+    def _get_term_structure(self, symbol: str) -> Optional[DataPayload]:
+        for src in self.sources:
+            if not src.check_available():
+                continue
+            if DataType.FUTURES_TERM_STRUCTURE not in src.supported_types:
+                continue
+            try:
+                ts = src.fetch_term_structure(symbol)
+                if ts and ts.points:
+                    grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
+                    return DataPayload(
+                        symbol=symbol, data_type=DataType.FUTURES_TERM_STRUCTURE,
+                        market=type(self).__module__,
+                        data=ts, source=src.name, grade=grade,
+                        collected_at=time.time(),
+                    )
+            except Exception:
+                continue
+        return None
+
+    def _get_spread(self, symbol: str, params: dict) -> Optional[DataPayload]:
+        near = params.get("near_contract", "")
+        far = params.get("far_contract", "")
+        if not near or not far:
+            return None
+        period = params.get("period", "daily")
+        days = int(params.get("days", 120))
+        for src in self.sources:
+            if not src.check_available():
+                continue
+            if DataType.FUTURES_SPREAD not in src.supported_types:
+                continue
+            try:
+                spread = src.fetch_spread(symbol, near, far, period, days)
+                if spread and spread.spread_series:
+                    grade = SourceGrade.PRIMARY if src.priority == 0 else SourceGrade.DAILY
+                    return DataPayload(
+                        symbol=symbol, data_type=DataType.FUTURES_SPREAD,
+                        market=type(self).__module__,
+                        data=spread, source=src.name, grade=grade,
+                        collected_at=time.time(),
+                    )
+            except Exception:
+                continue
+        return None
+
+    def _get_basis(self, symbol: str) -> Optional[DataPayload]:
+        for src in self.sources:
+            if not src.check_available():
+                continue
+            if DataType.FUTURES_BASIS not in src.supported_types:
+                continue
+            try:
+                basis = src.fetch_basis(symbol)
+                if basis and basis.spot_price > 0:
+                    grade = SourceGrade.DAILY
+                    return DataPayload(
+                        symbol=symbol, data_type=DataType.FUTURES_BASIS,
+                        market=type(self).__module__,
+                        data=basis, source=src.name, grade=grade,
+                        collected_at=time.time(),
+                    )
+            except Exception:
+                continue
+        return None
+
+    def _get_position_rank(self, symbol: str) -> Optional[DataPayload]:
+        for src in self.sources:
+            if not src.check_available():
+                continue
+            if DataType.FUTURES_POSITION not in src.supported_types:
+                continue
+            try:
+                pos = src.fetch_position_rank(symbol)
+                if pos and pos.long_ranks:
+                    grade = SourceGrade.PRIMARY
+                    return DataPayload(
+                        symbol=symbol, data_type=DataType.FUTURES_POSITION,
+                        market=type(self).__module__,
+                        data=pos, source=src.name, grade=grade,
+                        collected_at=time.time(),
+                    )
+            except Exception:
+                continue
+        return None
+
+    def _get_warehouse_receipts(self, symbol: str) -> Optional[DataPayload]:
+        for src in self.sources:
+            if not src.check_available():
+                continue
+            if DataType.FUTURES_WAREHOUSE_RECEIPT not in src.supported_types:
+                continue
+            try:
+                wr = src.fetch_warehouse_receipts(symbol)
+                if wr and wr.total_receipts > 0:
+                    grade = SourceGrade.PRIMARY
+                    return DataPayload(
+                        symbol=symbol, data_type=DataType.FUTURES_WAREHOUSE_RECEIPT,
+                        market=type(self).__module__,
+                        data=wr, source=src.name, grade=grade,
                         collected_at=time.time(),
                     )
             except Exception:
