@@ -233,6 +233,7 @@ python -m pytest tests/ -v   # 29 个测试用例
 ## 文档
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 架构设计文档
+- [PRODUCTION_PLAN.md](docs/PRODUCTION_PLAN.md) - 生产就绪路线图（v0.4.0 → v1.0.0）
 - [docs/harness/](docs/harness/) - HARNESS 工程规范文档 (09 份)
 - [docs/archive/](docs/archive/) - 已归档的历史文档（CODE_WIKI, DATA_CORE_ENHANCEMENT）
 
