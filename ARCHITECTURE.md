@@ -1,6 +1,6 @@
 # Data-Core — AI-Native 量化数据基础设施
 
-> 版本: v0.4.0 | AI-Native 量化研究数据基础设施
+> 版本: v1.0.0 | AI-Native 量化研究数据基础设施
 > 领域: 期货与证券 AI 驱动量化分析
 
 ## 核心理念
@@ -10,12 +10,14 @@ Data-Core 是一个 AI-Native 数据基础设施，专为 LLM 驱动的量化研
 
 1. **AI 可溯源**: 每个数据点都携带 source + grade + freshness 元数据，
    AI Agent 可以在决策前评估数据可靠性。
-2. **自描述 Schema**: 数据模型使用明确的 TypedDict/dataclass 定义，
+2. **自描述 Schema**: 数据模型使用明确的 dataclass 定义，
    Python 和 LLM 均可通过结构化反射消费。
-3. **优雅降级**: 多源回退链保证 AI Pipeline 不会因数据问题硬失败，
-   而是返回 UNAVAILABLE 等级而非抛出异常。
+3. **优雅降级**: 多源回退链 + 熔断器 + LLM→规则降级，三层保护，
+   永不硬失败，而是返回 UNAVAILABLE 等级而非抛出异常。
 4. **零外部依赖**: 自包含的 HTTP 数据源，无需 MCP/Skill/Agent 依赖。
    单 pip install 即可在任何研究环境中使用。
+5. **可观测性**: 健康检查、熔断器状态、指标收集、告警引擎四大支柱，
+   覆盖所有数据源调用。
 
 ## 架构
 
@@ -26,16 +28,31 @@ AI Agent / 策略
       |
       | get(symbol, data_type) -> DataPayload { data + grade + source + meta }
       v
-UnifiedDataProvider
+UnifiedDataProvider (api.py)
       |
-      +-- futures/      TQ-Local -> EastMoney
-      |    56 个合约品种, 仓单, 基差, 宏观
+      +-- futures/      TQ-Local -> EastMoney -> ExchangeAPI -> ShengYiShe
+      |    56+ 合约品种, 合约链/期限结构/价差/基差/持仓/仓单
       |
       +-- equity/       Tencent -> EastMoney -> Guosen
-      |    A股, ETF, 可转债, REITs
+      |    A股, ETF, 可转债, REITs, 财务数据
       |
-      +-- store/        MemoryCache + DuckDB 持久化
-      +-- registry/     SymbolRegistry (市场路由)
+      +-- macro/        国家统计局 -> 央行 -> 东方财富
+      |    CPI/PPI/GDP/PMI/M2/LPR
+      |
+      +-- news/         财联社 -> 华尔街见闻 -> 东方财富研报
+      |    新闻采集 + 关键词分类
+      |
+      +-- processing/   数据加工层
+      |    情绪打分 (LLM优先, 规则降级)
+      |    市场制度检测 (bull/bear/sideways)
+      |    基本面LLM加工 (研报摘要 + 财报提取)
+      |
+      +-- stream/       WebSocket 实时行情 (v1.0.0)
+      +-- alert/        告警引擎 (价格/波动率/数据延迟/熔断)
+      +-- store/        MemoryCache(L1) -> DuckDB(L2) -> HTTP源(L3)
+      +-- breaker/      熔断器 CLOSED/OPEN/HALF_OPEN
+      +-- metrics/      MetricsCollector 指标收集
+      +-- registry/     SymbolRegistry (市场路由, 56+ 品种)
       +-- config/       DataCoreConfig (环境变量 + YAML)
       +-- models/       DataType/MarketType/SourceGrade/DataPayload
 ```
@@ -48,27 +65,77 @@ UnifiedDataProvider
 @dataclass
 class DataPayload:
     symbol: str          # 查询符号
-    data: Any            # 实际数据 (KlineData, dict 等)
+    data_type: DataType  # 数据类型
+    market: MarketType   # 市场类型
+    data: Any            # 实际数据 (KlineData, SentimentData 等)
     source: str          # 数据来源
     grade: SourceGrade   # PRIMARY / DAILY / CACHED / STALE / UNAVAILABLE
     collected_at: float  # 采集时间
     errors: list[str]    # 遇到的错误
+    warnings: list[str]  # 警告信息
 ```
 
 AI Agent 可以据此决策：
-- 使用 PRIMARY 数据进行交易决策
-- 使用 DAILY/CACHED 数据进行分析
-- 跳过 STALE/UNAVAILABLE 或触发人工通知
+- `PRIMARY` 数据可用于交易决策
+- `DAILY`/`CACHED` 数据可用于分析
+- `STALE`/`UNAVAILABLE` 应跳过或触发告警
 
 ### 数据源降级链
 
-| 市场 | P0 | P1 | P2 |
-|------|----|----|----|
-| 期货 | TQ-Local (私有) | EastMoney (公开 API) | TQSDK (可选) |
-| A股 | Tencent (公开 API) | EastMoney (公开 API) | Guosen (公开 API) |
+| 市场 | P0 | P1 | P2 | P3 |
+|------|----|----|----|----|
+| 期货 | TQ-Local (私有) | EastMoney (公开 API) | 交易所官方 (公开 API) | 生意社 (公开 API) |
+| A股 | Tencent (公开 API) | EastMoney (公开 API) | 国信证券 (需 API-KEY) | — |
+| 宏观 | 国家统计局 (公开) | 央行 (公开) | 东方财富 (公开 API) | — |
+| 新闻 | 财联社 (公开) | 华尔街见闻 (公开) | 东方财富研报 (公开) | — |
 
 所有数据源都是自包含的 HTTP 实现 —— 无需外部 MCP，无需 Skill 依赖。
 系统可以完全离线运行（通过 DuckDB 缓存）或在线运行（通过 HTTP 数据源）。
+
+### 数据复权说明
+
+| 市场 | 复权方式 | 说明 |
+|:-----|:---------|:-----|
+| A 股/ETF/可转债/REITs | **前复权**（API 侧） | Tencent `qfq` 参数 / EastMoney `fqt=1` 参数 |
+| 期货 | **不复权** | 期货无除权除息，`dividend_type="none"` |
+
+股票市场的除权除息由数据源 API 直接处理，Data-Core 不做二次复权计算。
+期货不复权，主力换月时的跳空由消费方自行处理。
+
+### 三层缓存架构
+
+```
+请求: dc.get("RB", DataType.OHLCV)
+  |
+  1. MemoryCache (L1, 进程内热缓存)
+  |   TTL: 3600s, 命中即返回
+  |   未命中 → 继续
+  |
+  2. DuckDB (L2, 本地持久化)
+  |   查询 kline_cache 表
+  |   命中且新鲜 → 返回 CACHED 等级
+  |   未命中/过期 → 继续
+  |
+  3. HTTP 数据源 (L3, 多源降级链)
+       TQ-Local → EastMoney → ...
+       成功 → 写回 L1 + L2
+```
+
+### 情绪数据加工管线
+
+```
+NEWS (采集+分类)
+  |
+  +-- [P0] LLM 情绪打分 (需 API Key)
+  |     → SentimentItem(score, confidence, source="llm")
+  |
+  +-- [P1] 规则基线 (词典法, 零成本)
+  |     → SentimentItem(score, confidence=0.5, source="rule_fallback")
+  |
+  +-- SentimentAggregator
+        → 时间衰减加权 + 置信度加权 + 按日聚合
+        → SentimentData(overall_score, daily_series, topics)
+```
 
 ### AI Pipeline 集成
 
@@ -81,16 +148,24 @@ dc = UnifiedDataProvider()
 # AI Agent 在交易前检查数据质量
 payload = dc.get('RB', DataType.OHLCV, {'period': 'daily', 'days': 400})
 if payload.grade >= SourceGrade.DAILY:
-    # 使用数据进行分析
     kline = payload.data
 else:
-    # 触发数据刷新或跳过
     print(f'数据质量不足: {payload.grade}')
+
+# 情绪数据
+sentiment = dc.get('RB', DataType.SENTIMENT, {'days': 30})
+if sentiment.available:
+    print(f"情绪: {sentiment.data.overall_score} (来源: {sentiment.source})")
+
+# 健康检查
+health = dc.get_health()
+if health['status'] == 'healthy':
+    print("所有数据源正常")
 ```
 
 ### 依赖关系（最小化）
 
 必需: numpy, pandas, httpx, pyyaml
-可选: duckdb, psycopg2-binary, redis, beautifulsoup4
+可选: duckdb, psycopg2-binary, redis, beautifulsoup4, websockets
 
 零依赖: akshare, tushare, 任何 MCP Server, 任何外部 Skill。

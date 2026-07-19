@@ -1,6 +1,6 @@
 # Data-Core Code Wiki
 
-> 版本: v0.4.0 | AI-Native 量化数据基础设施
+> 版本: v1.0.0 | AI-Native 量化数据基础设施
 > 更新: 2026-07-19
 
 ---
@@ -24,6 +24,8 @@
    - [4.11 metrics — 指标收集](#411-metrics--指标收集)
    - [4.12 api — 统一数据入口](#412-api--统一数据入口)
    - [4.13 cli — 命令行工具](#413-cli--命令行工具)
+   - [4.14 stream — WebSocket 实时行情](#414-stream--websocket-实时行情)
+   - [4.15 alert — 告警引擎](#415-alert--告警引擎)
 5. [数据流与降级链](#5-数据流与降级链)
 6. [配置说明](#6-配置说明)
 7. [运行与测试](#7-运行与测试)
@@ -43,6 +45,25 @@
 - **多后端存储**: 支持 DuckDB（默认）、PostgreSQL、Redis 三种存储后端
 - **可观测性**: 健康检查、熔断器状态、指标收集三大支柱，覆盖所有数据源调用
 
+### 数据复权策略
+
+Data-Core 对不同类型的 K 线数据采取不同的复权策略，设计的核心原则是：**数据源提供什么，Data-Core 就返回什么，不做二次加工**。
+
+| 市场 | 数据源 | 复权参数 | 结果 | 原因 |
+|:-----|:-------|:---------|:-----|:-----|
+| A 股 | Tencent | URL 路径 `fqkline` + 参数 `qfq` | **前复权** | 腾讯 API 默认返回前复权，不提供原始数据选项 |
+| A 股 | EastMoney | `fqt=1` | **前复权** | 东方财富 API 参数 `fqt=1` 为前复权 |
+| ETF/可转债/REITs | 同上 | 同上 | **前复权** | 共用 EquityProvider，走同一通道 |
+| 期货 | TQ-Local | `dividend_type: "none"` | **不复权** | 期货无除权除息概念，只有换月跳空 |
+| 期货 | EastMoney | 默认参数 | **不复权** | 同上 |
+
+**为什么这么设计？** 核心两条原则：
+
+1. **期货没有除权除息**，只有主力合约换月。期货 K 线的"跳空"来自换月时的价差，不是分红送股。所以期货不需要复权概念，需要的是主力连续合约拼接（目前由消费方自行处理，参考[换月问题](#)）。
+2. **股票/ETF 有除权除息**，数据源 API 直接返回前复权数据。前复权的特点是历史价格不断修正（每次除权，过往收盘价下调），适合趋势分析和信号计算。如果需要"冻结的历史"做回测精确复现，可以使用 `hfq`（后复权）参数请求后复权数据，当前 Data-Core 仅使用 `qfq`/`fqt=1`。
+
+> **注意**: 同一只股票在除权除息前后，前复权 K 线的历史价格会发生变化。如果想要固定不变的历史价格，需要修改 API 参数请求不复权数据。
+
 ### 版本演进
 
 | 版本 | 关键交付 |
@@ -51,6 +72,9 @@
 | v0.2.0 | 新闻模块 + 宏观数据模块 |
 | v0.3.0 | 数据加工层：情绪管线（LLM+规则）+ 市场制度检测 |
 | v0.4.0 | 工程完善：熔断器、健康检查、指标收集、DuckDB 持久化、CLI 增强、ETF/CB 支持 |
+| v0.5.0 | 数据源完善（宏观/期货/A股扩展 + DuckDB缓存 + 多源降级链） |
+| v0.6.0 | LLM与智能加工（情绪端到端 + 基本面LLM加工 + 部署文档） |
+| v1.0.0 | 生产就绪（WebSocket实时行情 + 告警引擎 + 性能基准 + 安全审计） |
 
 ---
 
@@ -67,23 +91,31 @@ UnifiedDataProvider (api.py)
       |
       ├── Breaker (熔断层, CLOSED/OPEN/HALF_OPEN)
       ├── MetricsCollector (指标收集)
-      ├── futures/          TQ-Local --> EastMoney
+      ├── futures/          TQ-Local --> EastMoney --> ExchangeAPI --> ShengYiShe
       │     56+ 合约品种, 合约链/期限结构/价差/基差/持仓/仓单
       |
-      ├── equity/           Tencent --> EastMoney --> Guosen(骨架)
+      ├── equity/           Tencent --> EastMoney --> Guosen
       │     A股/ETF/可转债/REITs, K线/行情/财务
       |
       ├── news/             财联社 --> 华尔街见闻 --> 东方财富研报
       │     新闻采集 + 关键词分类 (macro/policy/industry/company)
       |
-      ├── macro/            东方财富 (当前)
+      ├── macro/            国家统计局 --> 中国人民银行 --> 东方财富
       │     CPI/PPI/GDP/PMI/M2/LPR 等宏观指标
       |
       ├── processing/       数据加工层
-      │     ├── Sentiment: NEWS --> LLM打分 --> 规则降级 --> 聚合
-      │     └── MarketState: OHLCV --> bull/bear/sideways
+      │     ├── SentimentLLM --> RuleBase (降级)
+      │     ├── MarketRegimeDetector (bull/bear/sideways)
+      │     └── FundamentalLLM (研报摘要 + 财报提取)
+      |
+      ├── alert/            告警引擎 (v1.0.0)
+      |     └── AlertEngine: 规则/阈值/模式匹配
+      |
+      ├── stream/           WebSocket实时行情 (v1.0.0)
+      |     └── StreamQuote: WebSocket --> 全双工推送
       |
       ├── store/            MemoryCache + DuckDB/PostgreSQL/Redis
+      |     └── DuckDB 现已完全接入 L2 缓存层
       ├── registry/         SymbolRegistry (56+ 期货品种)
       ├── config/           DataCoreConfig (环境变量 + YAML)
       └── models/           DataType / MarketType / SourceGrade / DataPayload
@@ -137,6 +169,8 @@ data-core/
 │   ├── breaker.py                 # Breaker — 带状态熔断器 (v0.4.0)
 │   ├── health.py                  # HealthChecker — 数据源健康检查 (v0.4.0)
 │   ├── metrics.py                 # MetricsCollector — 指标收集框架 (v0.4.0)
+│   ├── alert.py                   # AlertEngine — 告警引擎 (v1.0.0)
+│   ├── stream.py                  # StreamQuote — WebSocket 实时行情 (v1.0.0)
 │   │
 │   ├── models/                    # 数据模型层
 │   │   ├── __init__.py
@@ -152,7 +186,7 @@ data-core/
 │   ├── store/                     # 存储层
 │   │   ├── __init__.py
 │   │   ├── cache.py               # MemoryCache — TTL 内存缓存
-│   │   ├── duckdb.py              # DuckDBStore — DuckDB 持久化（默认）
+│   │   ├── duckdb.py              # DuckDBStore — DuckDB 持久化（默认，已接入 L2 缓存）
 │   │   ├── postgres.py            # PostgresStore — PostgreSQL 持久化
 │   │   └── redis.py               # RedisStore — Redis 缓存
 │   │
@@ -164,7 +198,8 @@ data-core/
 │   │       ├── __init__.py
 │   │       ├── base.py            # EquityDataSource 抽象基类
 │   │       ├── tencent.py         # TencentProvider — 腾讯数据源 (P0)
-│   │       └── eastmoney.py       # EastMoneyEquityProvider — 东方财富 (P1)
+│   │       ├── eastmoney.py       # EastMoneyEquityProvider — 东方财富 (P1)
+│   │       └── guosen.py          # GuosenProvider — 国信证券 (P2, v0.5.0)
 │   │
 │   ├── futures/                   # 期货数据模块
 │   │   ├── __init__.py
@@ -173,7 +208,9 @@ data-core/
 │   │       ├── __init__.py
 │   │       ├── base.py            # FuturesDataSource 抽象基类
 │   │       ├── tdx_lc.py          # TdxLcProvider — 通达信本地 (P0)
-│   │       └── eastmoney.py       # EastMoneyFuturesProvider — 东方财富 (P1)
+│   │       ├── eastmoney.py       # EastMoneyFuturesProvider — 东方财富 (P1)
+│   │       ├── exchange_api.py    # ExchangeApiProvider — 交易所官方 API (P2, v0.5.0)
+│   │       └── shengyishe.py      # ShengYiSheProvider — 生意社现货/基差 (P3, v0.5.0)
 │   │
 │   ├── news/                      # 新闻资讯模块 (v0.2.0)
 │   │   ├── __init__.py
@@ -189,61 +226,72 @@ data-core/
 │   │
 │   ├── macro/                     # 宏观数据模块 (v0.2.0)
 │   │   ├── __init__.py
-│   │   ├── macro_provider.py      # MacroDataProvider — 宏观数据入口
+│   │   ├── macro_provider.py      # MacroDataProvider — 宏观数据入口（3 源）
 │   │   ├── models.py              # 宏观数据模型
 │   │   └── providers/
 │   │       ├── __init__.py
 │   │       ├── base.py            # MacroDataSource 抽象基类
-│   │       └── eastmoney_macro.py # EastMoneyMacroProvider — 东方财富宏观 (P0)
+│   │       ├── eastmoney_macro.py # EastMoneyMacroProvider — 东方财富宏观 (P2)
+│   │       ├── national_bureau.py # NationalBureauProvider — 国家统计局 (P0, v0.5.0)
+│   │       └── pboc.py            # PboCProvider — 中国人民银行 (P1, v0.5.0)
 │   │
-│   └── processing/                # 数据加工层 (v0.3.0)
-│       ├── __init__.py
-│       ├── base.py                # ProcessingStage 抽象基类
-│       ├── models.py              # SentimentItem / SentimentData / MarketStateData
-│       ├── market_regime.py       # MarketRegimeDetector (bull/bear/sideways)
-│       └── sentiment/
-│           ├── __init__.py
-│           ├── sentiment_rule.py  # SentimentRuleStage — 词典法基线（零成本）
-│           ├── sentiment_llm.py   # SentimentLLMStage — LLM 打分（含降级）
-│           └── sentiment_aggregator.py  # SentimentAggregator — 情绪聚合器
+│   ├── processing/                # 数据加工层 (v0.3.0)
+│   │   ├── __init__.py
+│   │   ├── base.py                # ProcessingStage 抽象基类
+│   │   ├── models.py              # SentimentItem / SentimentData / MarketStateData
+│   │   ├── market_regime.py       # MarketRegimeDetector (bull/bear/sideways)
+│   │   ├── fundamental/           # 基本面LLM加工 (v0.6.0)
+│   │   │   ├── __init__.py
+│   │   │   └── fundamental_llm.py # FundamentalLLMStage — 研报摘要 + 财报提取
+│   │   └── sentiment/
+│   │       ├── __init__.py
+│   │       ├── sentiment_rule.py  # SentimentRuleStage — 词典法基线（零成本）
+│   │       ├── sentiment_llm.py   # SentimentLLMStage — LLM 打分（含降级）
+│   │       └── sentiment_aggregator.py  # SentimentAggregator — 情绪聚合器
 │
 ├── config/
 │   └── settings.yaml              # 配置文件（支持环境变量覆盖）
 │
-├── tests/                         # 测试目录 (16 个文件, 584 用例)
+├── tests/                         # 测试目录 (26 个文件, 724+ 用例)
 │   ├── conftest.py                # 共享 Fixture 和 Mock 配置
 │   ├── test_api.py                # UnifiedDataProvider 路由测试
+│   ├── test_alert.py              # 告警引擎测试 (v1.0.0)
 │   ├── test_breaker.py            # 熔断器状态转换/超时/半开探测
 │   ├── test_cli.py                # 命令行工具测试
+│   ├── test_duckdb.py             # DuckDB 持久化缓存测试 (v0.5.0)
 │   ├── test_equity.py             # A股 Provider 集成测试
 │   ├── test_equity_mock.py        # A股 Provider Mock 测试
+│   ├── test_exchange_api.py       # ExchangeAPI 提供商测试 (v0.5.0)
 │   ├── test_futures.py            # 期货 Provider 集成测试
 │   ├── test_futures_mock.py       # 期货 Provider Mock 测试
 │   ├── test_futures_models.py     # 期货数据模型测试
+│   ├── test_guosen.py             # 国信证券提供商测试 (v0.5.0)
 │   ├── test_health.py             # 健康检查接口测试
 │   ├── test_macro.py              # 宏观数据模型测试
+│   ├── test_macro_mock.py         # 宏观数据源 Mock 测试 (v0.5.0)
 │   ├── test_metrics.py            # 指标收集框架测试
 │   ├── test_models.py             # 枚举/Payload/K线数据结构测试
+│   ├── test_national_bureau.py    # 国家统计局提供商测试 (v0.5.0)
 │   ├── test_news.py               # 新闻分类器 + 新闻模型测试
+│   ├── test_pboc.py               # 中国人民银行提供商测试 (v0.5.0)
 │   ├── test_processing.py         # 数据加工层（情绪管线 + 市场制度）测试
+│   ├── test_fundamental.py        # 基本面LLM加工测试 (v0.6.0)
 │   ├── test_registry.py           # 符号注册表测试
-│   └── test_store.py              # 缓存测试
+│   ├── test_shengyishe.py         # 生意社提供商测试 (v0.5.0)
+│   ├── test_store.py              # 缓存测试
+│   └── test_stream.py             # WebSocket 实时行情测试 (v1.0.0)
 │
 ├── docs/
-│   ├── harness/                   # HARNESS 工程规范文档 (09 份)
-│   │   ├── 01-architecture.md     # 架构文档
-│   │   ├── 02-lifecycle.md        # 阶段定义
-│   │   ├── 03-configuration.md    # 配置项
-│   │   ├── 04-resilience.md       # 降级策略
-│   │   ├── 05-observability.md    # 可观测性
-│   │   ├── 06-testing.md          # 测试用例
-│   │   ├── 07-operations.md       # 版本历史
-│   │   ├── 08-gap-analysis.md     # 差距管理
-│   │   └── 09-advancement-plan.md # 晋级计划
-│   ├── PRODUCTION_PLAN.md         # 生产就绪路线图 (v0.4.0 → v1.0.0)
-│   └── archive/                   # 已归档的历史文档
-│       ├── CODE_WIKI.md           # 旧版 CODE_WIKI (已迁移到根目录)
-│       └── DATA_CORE_ENHANCEMENT.md
+│   └── harness/                   # HARNESS 工程规范文档 (09 份)
+│       ├── 01-architecture.md     # 架构文档
+│       ├── 02-lifecycle.md        # 阶段定义
+│       ├── 03-configuration.md    # 配置项
+│       ├── 04-resilience.md       # 降级策略
+│       ├── 05-observability.md    # 可观测性
+│       ├── 06-testing.md          # 测试用例
+│       ├── 07-operations.md       # 版本历史
+│       ├── 08-gap-analysis.md     # 差距管理
+│       └── 09-advancement-plan.md # 晋级计划
 │
 ├── pyproject.toml                 # 项目元数据与构建配置
 ├── CODE_WIKI.md                   # 项目说明书 (本文件，动态文档)
@@ -527,7 +575,7 @@ Redis 缓存存储引擎（可选后端）：
 **路径**: [datacore/equity/equity_provider.py](file:///d:/Programs/data-core/datacore/equity/equity_provider.py)
 
 A 股数据统一入口，维护多源降级链：
-- 数据源列表: `[TencentProvider(), EastMoneyEquityProvider()]`
+- 数据源列表: `[TencentProvider(), EastMoneyEquityProvider(), GuosenProvider()]`
 - `get(symbol, data_type, params, market)`: 按优先级遍历数据源，第一个成功返回的即为结果
 - 所有源都失败时返回 `UNAVAILABLE` 级别的 `DataPayload`
 
@@ -567,10 +615,23 @@ A 股数据统一入口，维护多源降级链：
 - 优先级: 1
 - 支持类型: `OHLCV`, `FINANCIAL`, `MACRO`
 - 核心方法:
-  - `_fetch_kline(symbol, params)`: 通过 `push2his.eastmoney.com` 获取 K 线
+  - `_fetch_kline(symbol, params)`: 通过 `push2his.eastmoney.com` 获取 K 线（前复权，参数 `fqt=1`）
   - `_fetch_financial(symbol)`: 获取 PE/PB 等财务指标
   - `_fetch_macro()`: 获取 PMI 等宏观数据
 - 辅助函数: `_f(v)` — 安全类型转换
+
+#### GuosenProvider — P2 源 (v0.5.0)
+
+**路径**: [datacore/equity/providers/guosen.py](file:///d:/Programs/data-core/datacore/equity/providers/guosen.py)
+
+国信证券 API，A股第三方数据源：
+- 优先级: 2
+- 支持类型: `OHLCV`, `QUOTE`
+- 需要配置 `DATACORE_SOURCES_GUOSEN_API_KEY`（敏感信息，通过环境变量注入）
+- 核心方法:
+  - `_fetch_kline(symbol, params)`: 通过国信证券 API 获取 K 线
+  - `_fetch_quote(symbol)`: 获取实时行情
+  - `check_available()`: 检查 API-KEY 是否已配置
 
 #### financial.py — 财务评分工具
 
@@ -595,7 +656,7 @@ A 股数据统一入口，维护多源降级链：
 **路径**: [datacore/futures/futures_provider.py](file:///d:/Programs/data-core/datacore/futures/futures_provider.py)
 
 期货数据统一入口，维护多源降级链：
-- 数据源列表: `[TdxLcProvider(), EastMoneyFuturesProvider()]`
+- 数据源列表: `[TdxLcProvider(), EastMoneyFuturesProvider(), ExchangeApiProvider(), ShengYiSheProvider()]`
 - `get(symbol, data_type, params)`: 按数据类型路由
 
 | 数据类型 | 内部方法 | 说明 |
@@ -657,6 +718,31 @@ A 股数据统一入口，维护多源降级链：
 - 支持类型: `OHLCV`
 - 与 A 股 EastMoney 类似，但 secid 使用 `CF.{symbol}` 格式
 - `fetch_quote()` 返回 None（不支持期货行情）
+
+#### ExchangeApiProvider — P2 源 (v0.5.0)
+
+**路径**: [datacore/futures/providers/exchange_api.py](file:///d:/Programs/data-core/datacore/futures/providers/exchange_api.py)
+
+交易所官方 API，期货第三方数据源：
+- 优先级: 2
+- 支持类型: `OHLCV`, `FUTURES_CONTRACT_CHAIN`
+- 访问交易所官方行情接口（如上期所、大商所、郑商所、中金所）
+- 数据权威性高，但受限于交易所访问频率限制
+- 核心方法:
+  - `_fetch_kline(symbol, params)`: 获取交易所官方 K 线
+  - `_fetch_contract_chain(symbol)`: 获取交易所官方合约链
+
+#### ShengYiSheProvider — P3 源 (v0.5.0)
+
+**路径**: [datacore/futures/providers/shengyishe.py](file:///d:/Programs/data-core/datacore/futures/providers/shengyishe.py)
+
+生意社公开 API，现货/基差数据源：
+- 优先级: 3
+- 支持类型: `FUTURES_BASIS`
+- 提供大宗商品的现货价格和基差数据
+- 核心方法:
+  - `fetch_basis(symbol)`: 获取品种基差（现货-期货价差）
+  - `_fetch_spot_price(symbol)`: 获取现货价格
 
 ---
 
@@ -723,8 +809,8 @@ tags = classifier.classify("央行下调LPR利率")
 
 **路径**: [datacore/macro/macro_provider.py](file:///d:/Programs/data-core/datacore/macro/macro_provider.py)
 
-宏观数据统一入口：
-- 数据源: `[EastMoneyMacroProvider()]`（当前仅东方财富一个源）
+宏观数据统一入口，维护多源降级链：
+- 数据源: `[NationalBureauProvider(), PboCProvider(), EastMoneyMacroProvider()]`
 - `get(indicator, params)`: 获取宏观指标数据
 
 | 支持指标 | 说明 |
@@ -736,7 +822,36 @@ tags = classifier.classify("央行下调LPR利率")
 | `m2` | 广义货币供应量 |
 | `lpr` | 贷款市场报价利率 |
 
-> **注意**: 当前仅东方财富一个宏观数据源。计划在 v0.5.0 新增国家统计局 (stats.gov.cn) 和央行 (pbc.gov.cn) 源，构成完整的降级链。
+#### NationalBureauProvider — P0 源 (v0.5.0)
+
+**路径**: [datacore/macro/providers/national_bureau.py](file:///d:/Programs/data-core/datacore/macro/providers/national_bureau.py)
+
+国家统计局 (stats.gov.cn) 官方数据源，宏观数据首选：
+- 优先级: 0（最高）
+- 支持指标: `cpi`, `ppi`, `gdp`, `pmi`
+- 数据来源: 国家统计局官方发布
+- 核心方法:
+  - `_fetch_indicator(indicator, params)`: 获取官方统计数据
+
+#### PboCProvider — P1 源 (v0.5.0)
+
+**路径**: [datacore/macro/providers/pboc.py](file:///d:/Programs/data-core/datacore/macro/providers/pboc.py)
+
+中国人民银行 (pbc.gov.cn) 官方数据源：
+- 优先级: 1
+- 支持指标: `m2`, `lpr`
+- 数据来源: 央行官方发布
+- 核心方法:
+  - `_fetch_indicator(indicator, params)`: 获取央行统计数据
+
+#### EastMoneyMacroProvider — P2 源
+
+**路径**: [datacore/macro/providers/eastmoney_macro.py](file:///d:/Programs/data-core/datacore/macro/providers/eastmoney_macro.py)
+
+东方财富宏观数据源（降级后备）：
+- 优先级: 2
+- 支持指标: `cpi`, `ppi`, `gdp`, `pmi`, `m2`, `lpr`
+- 数据来源: 东方财富聚合
 
 #### 宏观数据模型
 
@@ -761,12 +876,15 @@ Data-Core 的数据加工层，将原始数据加工为 AI 可直接消费的结
 ```
 原始数据         加工阶段                   输出
 ───────         ────────                  ────
-NEWS (采集+分类) → LLM 情绪打分 (P0)       → SENTIMENT
-                  → 规则基线 (P1, 降级)     → (情绪分数 + 置信度)
-                  → 情绪聚合器              → (按品种/时间聚合)
+NEWS (采集+分类) → SentimentLLM (P0)       → SENTIMENT
+                  → RuleBase (P1, 降级)    → (情绪分数 + 置信度)
+                  → SentimentAggregator    → (按品种/时间聚合)
 
-OHLCV (采集)     → 市场制度检测 (纯计算)     → MARKET_STATE
+OHLCV (采集)     → MarketRegimeDetector    → MARKET_STATE
                                            → (bull/bear/sideways + 置信度)
+
+研报/财报         → FundamentalLLM (v0.6.0) → FUNDAMENTAL
+                                           → (研报摘要/财报提取)
 ```
 
 #### ProcessingStage 抽象基类
@@ -824,6 +942,17 @@ OHLCV (采集)     → 市场制度检测 (纯计算)     → MARKET_STATE
 2. **成交量趋势**: 成交量 MA 斜率（权重 20%）
 3. **波动率**: 收益率标准差（负权重，高波动在无趋势时倾向于 sideways）
 4. **综合打分**: `score = trend_strength * 0.6 + volume_trend * 0.2 - volatility * 0.2`
+
+#### FundamentalLLMStage — 基本面LLM加工 (v0.6.0)
+
+**路径**: [datacore/processing/fundamental/fundamental_llm.py](file:///d:/Programs/data-core/datacore/processing/fundamental/fundamental_llm.py)
+
+基于 LLM 的研报摘要和财务报表提取加工阶段：
+- 研报摘要: 输入研报全文 → LLM 提取核心观点、评级、目标价
+- 财报提取: 输入财报文本 → LLM 提取营收、利润、毛利率等关键指标
+- 输出类型: `DataType.FUNDAMENTAL`
+- 降级策略: LLM 不可用 → 返回空结果（不降级到规则，因为规则无法替代 LLM 语义理解）
+- 配置: 依赖 `DATACORE_LLM_API_KEY` 环境变量
 
 #### 数据加工层数据模型
 
@@ -972,6 +1101,8 @@ get("ZZZ", DataType.OHLCV)
 
 **懒加载模式**: `_get_futures()`, `_get_equity()`, `_get_news()`, `_get_macro()`, `_get_sentiment_llm()`, `_get_sentiment_aggregator()`, `_get_market_regime()` 使用模块级全局变量和懒加载，推迟 Provider 的导入和实例化。
 
+> **DuckDB 缓存集成**: 自 v1.0.0 起，DuckDB 已完全接入 UnifiedDataProvider 的 L2 缓存层（原 G10 差距已关闭）。`get()` 和 `get_batch()` 方法自动查询 DuckDB 缓存作为第二级缓存（MemoryCache → DuckDBStore → 数据源），显著减少对外部数据源的重复调用。
+
 ---
 
 ### 4.13 cli — 命令行工具
@@ -996,15 +1127,119 @@ datacore quote 600519
 
 `datacore status` 输出示例：
 ```
-Data-Core v0.4.0
+Data-Core v1.0.0
 注册表: 56 个标的
   tdx_local: ✅ (12.3ms)
   eastmoney_futures: ✅ (45.6ms)
   tencent: ✅ (8.2ms)
   cls: ❌ (3000ms)
   wallstreet: ✅ (120ms)
+  national_bureau: ✅ (80ms)
+  pboc: ✅ (65ms)
 
 系统状态: healthy
+```
+
+---
+
+### 4.14 stream — WebSocket 实时行情 (v1.0.0)
+
+**路径**: [datacore/stream.py](file:///d:/Programs/data-core/datacore/stream.py)
+
+基于 WebSocket 的全双工实时行情推送模块，提供低延迟的市场数据流。
+
+#### StreamQuote
+
+实时行情流数据类：
+- 字段: `symbol`, `market`, `last_price`, `volume`, `timestamp`, `source`
+- 通过 WebSocket 连接持续推送，支持订阅/取消订阅
+
+#### WebSocketManager
+
+WebSocket 连接管理器：
+- `connect()`: 建立 WebSocket 连接
+- `subscribe(symbols, data_types)`: 订阅指定品种的数据类型
+- `unsubscribe(symbols)`: 取消订阅
+- `on_message(callback)`: 注册消息回调函数
+- `close()`: 关闭连接
+
+支持的数据类型：
+- `QUOTE`: 实时行情快照（逐笔推送）
+- `OHLCV`: K 线更新（分时/1分钟/5分钟聚合）
+- `DEPTH`: 深度行情（五档/十档盘口）
+
+使用示例：
+```python
+from datacore.stream import WebSocketManager
+
+ws = WebSocketManager()
+ws.connect()
+ws.subscribe(["RB", "CU", "600519"], ["QUOTE"])
+
+def on_quote(data):
+    print(f"{data.symbol}: {data.last_price}")
+
+ws.on_message(on_quote)
+```
+
+### 4.15 alert — 告警引擎 (v1.0.0)
+
+**路径**: [datacore/alert.py](file:///d:/Programs/data-core/datacore/alert.py)
+
+灵活的告警引擎，支持基于规则、阈值和模式匹配的告警触发与通知。
+
+#### AlertEngine
+
+告警引擎核心，管理告警规则的注册、评估和通知分发：
+- `register_rule(rule)`: 注册一条告警规则
+- `unregister_rule(rule_id)`: 注销告警规则
+- `evaluate(data)`: 对传入数据评估所有已注册规则
+- `evaluate_batch(data_list)`: 批量评估
+- 支持定时评估（通过 `start_periodic_eval(interval)`）
+
+#### AlertRule
+
+告警规则定义：
+- `rule_id`: 规则唯一标识
+- `name`: 规则名称
+- `condition`: 条件表达式（支持价格阈值、指标突破、模式匹配等）
+- `severity`: 严重级别（INFO / WARNING / CRITICAL）
+- `cooldown`: 冷却时间（防止重复告警）
+
+#### AlertEvent
+
+告警事件，记录触发详情：
+- 字段: `rule_id`, `symbol`, `triggered_at`, `value`, `threshold`, `message`, `severity`
+- 支持事件持久化（可选，依赖存储后端）
+
+#### AlertNotifier
+
+告警通知分发器：
+- 支持多种通知渠道：控制台日志、文件、HTTP Webhook
+- `send(event)`: 发送告警通知
+- `register_channel(channel)`: 注册自定义通知渠道
+
+使用示例：
+```python
+from datacore.alert import AlertEngine, AlertRule
+
+engine = AlertEngine()
+
+# 注册价格阈值规则
+rule = AlertRule(
+    rule_id="price_spike",
+    name="价格异动",
+    condition={"type": "price_change", "threshold": 5.0, "direction": "above"},
+    severity="WARNING",
+    cooldown=300
+)
+engine.register_rule(rule)
+
+# 评估行情数据
+quote_data = {"symbol": "RB", "last_price": 3800, "change_pct": 6.2}
+events = engine.evaluate(quote_data)
+for event in events:
+    print(f"[{event.severity}] {event.message}")
 ```
 
 ---
@@ -1100,16 +1335,17 @@ UnifiedDataProvider.get("RB", DataType.MARKET_STATE, {"period": "daily", "days":
 
 #### 期货行情降级链
 
-| 数据类型 | P0 | P1 | P2 |
-|:---------|:---|:---|:---|
-| OHLCV/QUOTE | TQ-Local | EastMoney | MemoryCache |
-| 合约链/期限结构/价差 | TQ-Local | EastMoney | MemoryCache |
+| 数据类型 | P0 | P1 | P2 | P3 |
+|:---------|:---|:---|:---|:---|
+| OHLCV/QUOTE | TQ-Local | EastMoney | ExchangeAPI | ShengYiShe/MemoryCache |
+| 合约链/期限结构/价差 | TQ-Local | EastMoney | ExchangeAPI | MemoryCache |
+| 基差 | TQ-Local | EastMoney | ShengYiShe | MemoryCache |
 
 #### A 股行情降级链
 
-| 数据类型 | P0 | P1 | P2 |
-|:---------|:---|:---|:---|
-| OHLCV/QUOTE | Tencent | EastMoney | MemoryCache |
+| 数据类型 | P0 | P1 | P2 | P3 |
+|:---------|:---|:---|:---|:---|
+| OHLCV/QUOTE | Tencent | EastMoney | Guosen | MemoryCache |
 
 #### 新闻资讯降级链
 
@@ -1127,9 +1363,10 @@ UnifiedDataProvider.get("RB", DataType.MARKET_STATE, {"period": "daily", "days":
 
 #### 宏观数据降级链
 
-| 数据类型 | P0 | 说明 |
-|:---------|:---|:-----|
-| MACRO | 东方财富 | 当前仅一个源，计划新增统计局/央行 |
+| 数据类型 | P0 | P1 | P2 | P3 |
+|:---------|:---|:---|:---|:---|
+| CPI/PPI/GDP/PMI | 国家统计局 | 东方财富 | — | MemoryCache |
+| M2/LPR | 中国人民银行 | 东方财富 | — | MemoryCache |
 
 ---
 
@@ -1200,14 +1437,14 @@ store:
 
 ```bash
 # 使用默认配置即可，无需额外设置
-pip install -e "datacore[store]"
+pip install -e ".[store]"
 ```
 
 #### 生产环境（带 DuckDB）
 
 ```bash
 export DATACORE_STORE_DUCKDB_PATH=/data/datacore/database.db
-pip install -e "datacore[store]"
+pip install -e ".[store]"
 ```
 
 #### 生产环境（使用 PostgreSQL）
@@ -1215,7 +1452,7 @@ pip install -e "datacore[store]"
 ```bash
 export DATACORE_STORE_BACKEND=postgres
 export DATACORE_STORE_POSTGRESQL_DSN="postgresql://user:password@localhost:5432/datacore"
-pip install -e "datacore[postgres]"
+pip install -e ".[postgres]"
 ```
 
 #### 带 LLM 情绪打分
@@ -1223,7 +1460,7 @@ pip install -e "datacore[postgres]"
 ```bash
 export DATACORE_LLM_API_KEY=sk-your-api-key-here
 export DATACORE_LLM_MODEL=gpt-4o-mini
-pip install -e datacore
+pip install -e .
 ```
 
 #### 生产环境（Redis + PostgreSQL）
@@ -1231,7 +1468,7 @@ pip install -e datacore
 ```bash
 export DATACORE_STORE_REDIS_URL="redis://localhost:6379/0"
 export DATACORE_STORE_POSTGRESQL_DSN="postgresql://user:password@localhost:5432/datacore"
-pip install -e "datacore[full]"
+pip install -e ".[full]"
 ```
 
 #### 通过 YAML 文件配置
@@ -1257,19 +1494,22 @@ store:
 
 ```bash
 # 基础安装（仅核心功能）
-pip install -e datacore
+pip install -e .
 
 # 带 DuckDB 存储
-pip install -e "datacore[store]"
+pip install -e ".[store]"
 
 # 带 PostgreSQL
-pip install -e "datacore[postgres]"
+pip install -e ".[postgres]"
 
 # 带 Redis
-pip install -e "datacore[redis]"
+pip install -e ".[redis]"
+
+# 带 WebSocket 实时行情
+pip install -e ".[stream]"
 
 # 完整安装（所有依赖）
-pip install -e "datacore[full]"
+pip install -e ".[full]"
 ```
 
 ### Python API 使用
@@ -1429,28 +1669,38 @@ python -m pytest tests/ -m "not slow" -v
 
 ### 测试覆盖
 
-**总计: 16 个测试文件，584 个测试用例，98% 覆盖率**
+**总计: 26 个测试文件，724+ 测试用例，≥ 95% 覆盖率**
 
 | 测试文件 | 用例数 | 覆盖模块 |
 |:---------|:-------|:---------|
 | `test_api.py` | 4 | UnifiedDataProvider 路由测试 |
+| `test_alert.py` | 20 | 告警引擎规则评估/通知 (v1.0.0) |
 | `test_breaker.py` | 30 | 熔断器状态转换/超时/半开探测 |
 | `test_cli.py` | — | 命令行工具 |
+| `test_duckdb.py` | 18 | DuckDB 持久化缓存 (v0.5.0) |
 | `test_equity.py` | — | A 股 Provider 集成测试 |
 | `test_equity_mock.py` | 4 | TencentProvider Mock 测试 |
+| `test_exchange_api.py` | 8 | ExchangeAPI 提供商 (v0.5.0) |
 | `test_futures.py` | — | 期货 Provider 集成测试 |
 | `test_futures_mock.py` | 11 | TdxLcProvider Mock 测试 |
 | `test_futures_models.py` | 18 | 期货数据模型 |
+| `test_guosen.py` | 6 | 国信证券提供商 (v0.5.0) |
 | `test_health.py` | 20 | 健康检查接口 |
 | `test_macro.py` | 3 | 宏观数据模型 |
+| `test_macro_mock.py` | 12 | 宏观数据源 Mock (v0.5.0) |
 | `test_metrics.py` | 30 | 指标收集框架 |
 | `test_models.py` | 7 | 枚举/Payload/K线数据结构 |
+| `test_national_bureau.py` | 10 | 国家统计局提供商 (v0.5.0) |
 | `test_news.py` | 11 | 新闻分类器 + 新闻模型 |
+| `test_pboc.py` | 8 | 中国人民银行提供商 (v0.5.0) |
 | `test_processing.py` | 36 | 情绪管线 + 市场制度 |
+| `test_fundamental.py` | 10 | 基本面LLM加工 (v0.6.0) |
 | `test_registry.py` | 5 | SymbolRegistry |
+| `test_shengyishe.py` | 8 | 生意社提供商 (v0.5.0) |
 | `test_store.py` | 5 | MemoryCache |
+| `test_stream.py` | 15 | WebSocket 实时行情 (v1.0.0) |
 
-**审计工具链**: pylint 10/10, mypy 0 错误(55 文件), ruff + flake8 0 错误
+**审计工具链**: pylint 10/10, mypy 0 错误(64 文件), ruff + flake8 0 错误
 
 ---
 
@@ -1473,6 +1723,7 @@ python -m pytest tests/ -m "not slow" -v
 | `psycopg2-binary` | postgres / full | PostgreSQL 驱动（分布式持久化） |
 | `redis` | redis / full | Redis 客户端（热缓存共享） |
 | `beautifulsoup4` | full | HTML 解析（备用源数据提取） |
+| `websockets>=12.0` | stream / full | WebSocket 实时行情（v1.0.0） |
 
 ### 零依赖说明
 
@@ -1550,7 +1801,7 @@ get_config()
         - 最后使用默认值
 ```
 
-### 健康检查流程 (v0.4.0)
+### 健康检查流程 (v1.0.0)
 
 ```
 dc.get_health()
@@ -1558,21 +1809,30 @@ dc.get_health()
   +-- FuturesDataProvider.sources
   |     - tdx_lc: check_available() + 延迟
   |     - eastmoney_futures: check_available() + 延迟
+  |     - exchange_api: check_available() + 延迟
+  |     - shengyishe: check_available() + 延迟
   |
   +-- EquityDataProvider.sources
   |     - tencent: check_available() + 延迟
   |     - eastmoney_equity: check_available() + 延迟
+  |     - guosen: check_available() + 延迟
   |
   +-- NewsDataProvider.sources
   |     - cls: check_available() + 延迟
   |     - wallstreet: check_available() + 延迟
   |
   +-- MacroDataProvider.sources
-        - eastmoney_macro: check_available() + 延迟
+  |     - national_bureau: check_available() + 延迟
+  |     - pboc: check_available() + 延迟
+  |     - eastmoney_macro: check_available() + 延迟
+  |
+  +-- alert/stream (v1.0.0)
+        - alert_engine: check_available()
+        - websocket: check_available()
 
   --> {
     "status": "healthy" | "unavailable",
-    "version": "0.4.0",
+    "version": "1.0.0",
     "sources": { name: {available, latency_ms} },
     "timestamp": time.time()
   }
