@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from ..base import DataCoreBaseTool
+from ..schemas import DateAlignSchema
 
 
 class DateAlignTool(DataCoreBaseTool):
@@ -23,6 +24,7 @@ class DateAlignTool(DataCoreBaseTool):
         "method (str, 可选) - 缺失值填充方法，'ffill'/'bfill'/'interpolate'/'drop'，默认 'ffill'；"
         "how (str, 可选) - 对齐方式，'inner'/'outer'/'left'/'right'，默认 'outer'"
     )
+    args_schema = DateAlignSchema
 
     def _run(self, series: dict[str, list[dict[str, Any]]],
              date_col: str = "datetime", method: str = "ffill",

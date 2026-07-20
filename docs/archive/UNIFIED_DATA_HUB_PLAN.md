@@ -1,8 +1,10 @@
 # Data-Core 统一数据中枢升级方案
 
-> 版本: v1.0.0 → v2.0.0（规划中）
+> 版本: v1.0.0 → v2.4.0（已完成）
 > 本方案取代 `docs/UPGRADE_V2_PLAN.md`
-> 创建: 2026-07-19
+> 创建: 2026-07-19 | 更新: 2026-07-20
+
+> **状态**: v2.4.0 已全部完成，1974 个测试用例通过，88% 覆盖率，ruff 零错误
 
 ---
 
@@ -738,20 +740,21 @@ from datacore.tools import DataCoreQLibDataTool
 
 ## 7. 实施路线图
 
-### 路线图总览
+### 路线图总览（已完成）
 
 ```
-Phase 1 (v1.1)          Phase 2 (v1.2)          Phase 3 (v1.3)          Phase 4 (v2.0)          Phase 5 (v2.0)
-  基础设施 + 双接口       吸收 FDC 模块          新增采集+Tool+复权      FDT 迁移               Qlib/RD-Agent 适配
-────────────────        ──────────────        ──────────────          ──────────────          ──────────────────
-AsyncDataProvider       技术指标 40+            Web 爬虫                替换全部 import          DataCoreQLibProvider
-双引擎架构               TDX 公式              开源库/文档              适配 async               CalendarProvider
-F10 综合报告             趋势成熟度             搜索                    指标/F10 迁移             InstrumentProvider
-共享缓存/熔断器           QMT/TqSDK 采集         BaseTool 30+           删除 FDC 模块            RD-Agent 兼容验证
-                            WebFallback           清洗/校验/衍生           全面测试
-                            数据新鲜度             复权/换月引擎（新增）
-                                                 周期转换引擎（新增）
-                                                 运维工具
+Phase 1 (v1.1)          Phase 2 (v1.2)          Phase 3 (v1.3)          Phase 4 (v2.0)          Phase 5 (v2.0)          Phase 6-8 (v2.1-v2.4)
+  基础设施 + 双接口       吸收 FDC 模块          新增采集+Tool+复权      FDT 迁移               Qlib/RD-Agent 适配      增强与修复
+────────────────        ──────────────        ──────────────          ──────────────          ──────────────────      ───────────
+✅ AsyncDataProvider     ✅ 技术指标 40+          ✅ Web 爬虫             ✅ FDC 兼容层           ✅ DataCoreQLibProvider  ✅ API 周期自动转换
+✅ F10 综合报告          ✅ TDX 公式              ✅ 开源库/文档           ✅ FDT 迁移完成         ✅ CalendarProvider      ✅ BaseTool args_schema
+✅ core 共享基础设施     ✅ 趋势成熟度            ✅ 搜索                  ✅ 删除 FDC 模块        ✅ InstrumentProvider    ✅ Prometheus 可观测性
+✅ 共享缓存/熔断器        ✅ QMT/TqSDK/WebFallback ✅ BaseTool 23+          ✅ 全面测试             ✅ RD-Agent 兼容验证     ✅ SymbolRegistry 修复
+✅ 测试 28 个            ✅ 数据新鲜度            ✅ 清洗/校验/衍生        ✅ 测试 68 个           ✅ 测试 99 个            ✅ Provider adjustment
+✅ 测试 90+20 个         ✅ 复权/换月引擎         ✅ 测试 89+80+74 个                                    ✅ 测试 19+10 个
+                        ✅ 周期转换引擎
+                        ✅ 运维工具
+                        ✅ 测试 31+27+18+19 个
 ```
 
 ### Phase 1 — 基础设施 + 双接口（v1.1, ~3.5 人日）
@@ -1365,4 +1368,15 @@ async def compute_indicators(data, names="all"):
 | P3 | `tools/` (30+), `collectors/` (6), `cleaning/` (5), `validation/` (5), `adjustment/` (8+), `resampler/` (6), `mcp_server.py` | ~3700 | `pyproject.toml`, `README.md` |
 | P4 | 兼容层 `fdc_compat.py`（可选） | ~200 | FDT 全部 62 个引用文件 |
 | P5 | `qlib_adapter/provider.py`, `qlib_adapter/calendar.py`, `qlib_adapter/instrument.py` | ~400 | — |
+| P6 | `tools/schemas.py` (23 个 Pydantic Schema) | ~300 | `tools/base.py` |
+| P7 | `observability.py`, `metrics_endpoint.py` | ~500 | `api.py`, `tools/base.py`, `metrics.py` |
 | 文档 | `docs/TOOLS_GUIDE.md` | ~500 | `docs/harness/` 全部 9 份 |
+
+---
+
+## 变更记录
+
+| 日期 | 版本 | 更新内容 |
+|:-----|:-----|:---------|
+| 2026-07-20 | v2.4.0 | 更新状态为已完成，标记所有 Phase 任务 ✅，更新路线图，添加变更记录 |
+| 2026-07-19 | v1.0.0 | 初始版本，定义 v1.0.0 → v2.0.0 统一数据中枢升级方案 |

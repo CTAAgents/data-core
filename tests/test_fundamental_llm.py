@@ -1,6 +1,5 @@
 """基本面 LLM 加工测试。"""
 import json
-import pytest
 
 
 class TestFundamentalModels:

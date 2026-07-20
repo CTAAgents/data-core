@@ -1,6 +1,6 @@
 # Data-Core Advancement Plan
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.2.0 | Updated: 2026-07-20
 
 ## Milestones
 
@@ -18,6 +18,83 @@ Version: v2.0.0 | Updated: 2026-07-20
 | **M10** | **v1.3.0** | **2026-07-19** | ✅ **COMPLETED** | BaseTool & 数据工具链版（23个Tool + 复权换月 + 周期转换 + 消费者反馈 + 数据清洗 + 数据校验 + 采集骨架 + 运维工具） |
 | **M11** | **v2.0.0** | **2026-07-20** | ✅ **COMPLETED** | FDT 兼容层 + Qlib/RD-Agent 适配器（统一数据枢纽完整版） |
 | **M12** | **v2.0.0** | **2026-07-20** | ✅ **COMPLETED** | 终验通过（1418测试 + 88%覆盖率 + ruff零错误） |
+| **M13** | **v2.1.0** | **2026-07-20** | ✅ **COMPLETED** | 缺口补全版：API层周期自动转换 + BaseTool args_schema 补全 |
+| **M14** | **v2.2.0** | **2026-07-20** | ✅ **COMPLETED** | Prometheus 可观测性集成版：observability.py + metrics_endpoint.py + 11 个标准指标 + 装饰器埋点 |
+
+## M14 (v2.2.0) 交付清单 ✅
+
+### Prometheus 可观测性模块
+- ✅ datacore/observability.py 模块
+- ✅ Counter 单调递增计数器（自定义实现）
+- ✅ Gauge 可增减仪表（自定义实现）
+- ✅ Histogram 延迟分布（自定义桶位实现）
+- ✅ prometheus_client 可选依赖（已安装时使用原生实现）
+- ✅ 11 个标准指标实例化
+- ✅ observe_api_call 装饰器（API 层埋点）
+- ✅ observe_tool_call 装饰器（Tool 层埋点）
+- ✅ threading.Lock 线程安全保护
+
+### 11 个标准指标
+- ✅ api_requests_total（Counter）— API 请求总数
+- ✅ api_request_duration_seconds（Histogram）— API 请求延迟分布
+- ✅ api_errors_total（Counter）— API 错误总数
+- ✅ source_degradations_total（Counter）— 数据源降级总次数
+- ✅ source_availability（Gauge）— 数据源可用性
+- ✅ cache_hits_total（Counter）— 缓存命中次数
+- ✅ cache_misses_total（Counter）— 缓存未命中次数
+- ✅ resampler_operations_total（Counter）— 周期转换操作总数
+- ✅ issues_open（Gauge）— 当前未解决问题数
+- ✅ tool_invocations_total（Counter）— Tool 调用总数
+- ✅ tool_errors_total（Counter）— Tool 错误总数
+
+### Prometheus HTTP 端点
+- ✅ datacore/metrics_endpoint.py 模块
+- ✅ generate_metrics() 生成 Prometheus exposition format 文本
+- ✅ start_metrics_server(port=9090) 启动 HTTP 服务器
+- ✅ /metrics 端点（Prometheus 抓取端点）
+- ✅ /healthz 端点（健康检查）
+- ✅ / 端点（服务信息）
+- ✅ daemon 线程运行（不阻塞主进程）
+- ✅ stop_metrics_server() 优雅关闭
+
+### 埋点集成
+- ✅ API 层埋点（api.py UnifiedDataProvider.get() 添加 observe_api_call 装饰器）
+- ✅ Tool 层埋点（tools/base.py DataCoreBaseTool.invoke() 添加 observe_tool_call 装饰器）
+- ✅ Issue 埋点（issue.py report() 完成后更新 issues_open gauge）
+- ✅ Resampler 埋点（resampler/ohlcv.py resample_ohlcv() 完成后递增 resampler_operations counter）
+
+### metrics.py 增强
+- ✅ 新增 _format_prometheus() 方法
+- ✅ MetricsCollector 类保留原有接口，向后兼容
+
+### 测试与质量
+- ✅ 新增 tests/test_observability.py（19 个测试用例）
+- ✅ 测试总数 1437 个（1418 + 19）
+- ✅ ruff 代码审计零错误
+- ✅ prometheus_client 可选依赖降级路径覆盖
+
+## M13 (v2.1.0) 交付清单 ✅
+
+### API 层周期自动转换
+- ✅ UnifiedDataProvider.get() 对 OHLCV 类型数据自动重采样
+- ✅ 支持周期：1m, 5m, 15m, 30m, 60m, daily, weekly, monthly
+- ✅ 自动推断源周期，无需用户指定
+- ✅ 出错时降级返回原始数据，保证数据可用性
+- ✅ payload.meta.resampled_from 记录源周期
+- ✅ 异步接口（AsyncDataProvider）自动继承
+
+### BaseTool args_schema 补全
+- ✅ 新增 datacore/tools/schemas.py
+- ✅ 23 个 Pydantic Schema 类
+- ✅ 23 个 Tool 全部配备 args_schema（Pydantic BaseModel）
+- ✅ pydantic 为可选依赖，未安装时 args_schema = None
+- ✅ 完全兼容 LangChain StructuredTool
+
+### 测试与质量
+- ✅ 测试总数 1418 个（新增功能通过既有测试覆盖）
+- ✅ 代码覆盖率 88%（核心模块接近 100%）
+- ✅ ruff 代码审计零错误
+- ✅ 两个缺口全部补全
 
 ## M11 (v2.0.0) 交付清单 ✅
 
@@ -399,19 +476,57 @@ Version: v2.0.0 | Updated: 2026-07-20
 - [x] Qlib/RD-Agent 适配器交付
 - [x] 统一数据枢纽完整交付
 
+### M12 → M13 晋级标准 ✅
+- [x] API 层周期自动转换（UnifiedDataProvider.get() OHLCV 自动重采样）
+- [x] 支持周期：1m, 5m, 15m, 30m, 60m, daily, weekly, monthly
+- [x] 自动推断源周期，出错时降级返回原始数据
+- [x] payload.meta.resampled_from 记录源周期
+- [x] 异步接口（AsyncDataProvider）自动继承
+- [x] BaseTool args_schema 补全（23 个 Pydantic Schema 类）
+- [x] pydantic 为可选依赖，未安装时 args_schema = None
+- [x] 完全兼容 LangChain StructuredTool
+- [x] G29-G30 差距全部关闭
+- [x] 测试总数 1418 个（新增功能通过既有测试覆盖）
+- [x] ruff 代码审计零错误
+- [x] 两个缺口全部补全
+
+### M13 → M14 晋级标准 ✅
+- [x] Prometheus 可观测性模块（datacore/observability.py）
+- [x] Counter/Gauge/Histogram 自定义实现（prometheus_client 可选依赖）
+- [x] 11 个标准指标（api_requests_total / api_request_duration_seconds / api_errors_total / source_degradations_total / source_availability / cache_hits_total / cache_misses_total / resampler_operations_total / issues_open / tool_invocations_total / tool_errors_total）
+- [x] observe_api_call 装饰器（API 层埋点）
+- [x] observe_tool_call 装饰器（Tool 层埋点）
+- [x] 线程安全实现（threading.Lock 保护所有指标更新）
+- [x] Prometheus HTTP 端点（datacore/metrics_endpoint.py）
+- [x] generate_metrics() 生成 Prometheus exposition format
+- [x] start_metrics_server(port=9090) 启动 HTTP 服务器
+- [x] 支持 /metrics、/healthz、/ 三个端点
+- [x] daemon 线程运行 + 优雅关闭
+- [x] API 层埋点（api.py UnifiedDataProvider.get() 添加 observe_api_call 装饰器）
+- [x] Tool 层埋点（tools/base.py DataCoreBaseTool.invoke() 添加 observe_tool_call 装饰器）
+- [x] Issue 埋点（issue.py report() 完成后更新 issues_open gauge）
+- [x] Resampler 埋点（resampler/ohlcv.py resample_ohlcv() 完成后递增 resampler_operations counter）
+- [x] metrics.py 增强（新增 _format_prometheus() 方法，保留 MetricsCollector 向后兼容）
+- [x] G31 差距关闭
+- [x] 新增 tests/test_observability.py（19 个测试用例）
+- [x] 测试总数 1437 个（1418 + 19）
+- [x] ruff 代码审计零错误
+
 ## 项目最终状态
 
-| 维度 | v2.0.0 |
+| 维度 | v2.2.0 |
 |:-----|:-------|
-| 版本 | v2.0.0 统一数据枢纽完整版 |
+| 版本 | v2.2.0 Prometheus 可观测性集成版 |
 | 源文件 | 100+ 个 .py |
-| 测试文件 | 39 个 |
-| 测试用例 | 1418 个 |
+| 测试文件 | 40 个 |
+| 测试用例 | 1437 个 |
 | 代码覆盖率 | 88%（核心模块接近 100%） |
 | pylint | ≥ 9.50/10 |
 | mypy | 0 错误 |
 | ruff | 0 错误 |
-| 差距关闭 | 41 个全部关闭 |
+| 差距关闭 | 44 个全部关闭（G01-G31, D01-D05） |
 | 安全审计 | 7 项全部通过 |
+| Prometheus 指标 | 11 个标准指标 |
+| Prometheus 端点 | /metrics、/healthz、/ |
 | 部署 | 裸机部署（推荐），可选容器化 |
-| 定位 | 统一数据枢纽完整交付 |
+| 定位 | 统一数据枢纽完整交付 + 缺口补全 + Prometheus 可观测性集成 |

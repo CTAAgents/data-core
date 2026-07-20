@@ -7,7 +7,6 @@ from datacore.macro.macro_provider import MacroDataProvider
 from datacore.macro.providers.base import MacroDataSource
 from datacore.macro.providers.eastmoney_macro import (
     EastMoneyMacroProvider,
-    MACRO_INDICATOR_MAP,
 )
 from datacore.models.enums import DataType, MarketType, SourceGrade
 
@@ -451,3 +450,61 @@ class TestMacroDataProvider:
         mock_src.check_available.return_value = True
         provider.sources = [mock_src]
         return provider, mock_src
+
+    def test_init_sources_national_bureau_failure_skips(self):
+        """NationalBureauProvider 构造异常被吞掉，不加入 sources。"""
+        with patch("datacore.macro.providers.national_bureau.NationalBureauProvider",
+                   side_effect=Exception("Constructor failed")):
+            provider = MacroDataProvider()
+        assert all(src.name != "national_bureau" for src in provider.sources)
+        assert len(provider.sources) == 2
+        assert provider.sources[0].name == "pboc"
+        assert provider.sources[1].name == "eastmoney_macro"
+
+    def test_init_sources_pboc_failure_skips(self):
+        """PboCProvider 构造异常被吞掉，不加入 sources。"""
+        with patch("datacore.macro.providers.pboc.PboCProvider",
+                   side_effect=Exception("Constructor failed")):
+            provider = MacroDataProvider()
+        assert all(src.name != "pboc" for src in provider.sources)
+        assert len(provider.sources) == 2
+        assert provider.sources[0].name == "national_bureau"
+        assert provider.sources[1].name == "eastmoney_macro"
+
+    def test_get_priority_zero_uses_primary_grade(self, mock_macro_data):
+        """priority 为 0 的 source 返回 PRIMARY 等级。"""
+        provider = MacroDataProvider()
+        mock_src = MagicMock()
+        mock_src.name = "national_bureau"
+        mock_src.priority = 0
+        mock_src.check_available.return_value = True
+        mock_src.fetch_macro.return_value = mock_macro_data
+        provider.sources = [mock_src]
+
+        result = provider.get(indicator="pmi")
+
+        assert result.grade == SourceGrade.PRIMARY
+
+
+# ── MacroData / MacroIndicator 模型测试 ──
+
+class TestMacroModels:
+    """datacore.macro.models"""
+
+    def test_latest_returns_first_item(self):
+        """latest 返回数据列表第一项。"""
+        data = MacroData(
+            indicator="pmi",
+            total=2,
+            data=[
+                MacroIndicator(indicator="pmi", period="2026-06", value=50.5),
+                MacroIndicator(indicator="pmi", period="2026-05", value=49.8),
+            ],
+        )
+        assert data.latest() is data.data[0]
+        assert data.latest().value == 50.5
+
+    def test_latest_empty_returns_none(self):
+        """latest 在空数据时返回 None。"""
+        data = MacroData(indicator="pmi")
+        assert data.latest() is None

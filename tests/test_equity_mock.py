@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch
 from datacore.equity.providers.tencent import TencentProvider
 from datacore.models.enums import DataType

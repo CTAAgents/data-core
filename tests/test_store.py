@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pickle
-import sys
 import time
 from unittest.mock import MagicMock, patch
 
@@ -468,7 +467,7 @@ class TestRedisStore:
             mock_cfg = MagicMock()
             mock_cfg.redis_url = "redis://localhost:6379/0"
             mock_get_config.return_value = mock_cfg
-            store = RedisStore()
+            RedisStore()
             mock_redis_module.from_url.assert_called_once_with(
                 "redis://localhost:6379/0", decode_responses=False
             )

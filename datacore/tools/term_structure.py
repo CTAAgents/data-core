@@ -6,6 +6,7 @@ from typing import Any
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import TermStructureSchema
 
 
 class DataCoreTermStructureTool(DataCoreBaseTool):
@@ -21,6 +22,7 @@ class DataCoreTermStructureTool(DataCoreBaseTool):
         "price_type (str, 可选) - 价格类型，'close'/'settle'，默认 'close'；"
         "include_volume (bool, 可选) - 是否包含成交量，默认 True"
     )
+    args_schema = TermStructureSchema
 
     def _run(self, symbol: str, price_type: str = "close",
              include_volume: bool = True, **kwargs: Any) -> dict[str, Any]:

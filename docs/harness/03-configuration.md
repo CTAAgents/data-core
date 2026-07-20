@@ -1,6 +1,6 @@
 # Data-Core Configuration
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.2.0 | Updated: 2026-07-20
 
 ## Config Sources (priority high to low)
 
@@ -127,12 +127,13 @@ Version: v2.0.0 | Updated: 2026-07-20
 |:---------|:-------|:-----|
 | `DATACORE_FUTURES_SOURCES` | `tdx_lc,eastmoney,qmt,exchange_api,shengyishe,web_fallback,tqsdk` | 启用的期货数据源（7 源，按优先级排序） |
 
-### BaseTool 配置（v1.3.0 新增）
+### BaseTool 配置（v1.3.0 新增，v2.1.0 增强）
 | 环境变量 | 默认值 | 说明 |
 |:---------|:-------|:-----|
 | `DATACORE_TOOLS_ENABLED` | `true` | 是否启用 BaseTool 接口层 |
 | `DATACORE_TOOLS_AUTO_DISCOVERY` | `true` | 是否启用 all_tools 自动发现机制 |
 | `DATACORE_TOOLS_LANGCHAIN_COMPAT` | `true` | 是否启用 LangChain 协议兼容模式 |
+| `DATACORE_TOOLS_ARGS_SCHEMA_ENABLED` | `true` | 是否启用 Tool args_schema（v2.1.0 新增，pydantic 可选依赖） |
 
 ### 复权/换月配置（v1.3.0 新增）
 | 环境变量 | 默认值 | 说明 |
@@ -142,12 +143,14 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `DATACORE_ADJUST_FUTURES_SPREAD` | `front` | 期货换月价差调整方式（front/back/equal） |
 | `DATACORE_ADJUST_FIXED_ROLLOVER_DAY` | `1` | 固定日换月日期（1-31） |
 
-### 周期转换配置（v1.3.0 新增）
+### 周期转换配置（v1.3.0 新增，v2.1.0 增强）
 | 环境变量 | 默认值 | 说明 |
 |:---------|:-------|:-----|
 | `DATACORE_RESAMPLE_DEFAULT_PERIOD` | `auto` | 默认周期转换目标（auto/1m/5m/15m/30m/60m/daily/weekly/monthly） |
 | `DATACORE_RESAMPLE_ENABLE_AUTO` | `true` | 是否启用 auto 自动检测模式 |
 | `DATACORE_RESAMPLE_VOLUME_SUM` | `true` | 成交量是否求和聚合 |
+| `DATACORE_API_AUTO_RESAMPLE` | `true` | API 层是否自动重采样 OHLCV 数据（v2.1.0 新增） |
+| `DATACORE_API_RESAMPLE_FALLBACK` | `true` | API 层周期转换失败时是否降级返回原始数据（v2.1.0 新增） |
 
 ### 消费者反馈配置（v1.3.0 新增）
 | 环境变量 | 默认值 | 说明 |
@@ -207,5 +210,20 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `DATACORE_QLIB_INSTRUMENT_TYPE` | `all` | 默认品种池类型（all/stock/futures/...） |
 | `DATACORE_QLIB_EXPRESSION_ENGINE` | `true` | 是否启用表达式引擎 |
 | `DATACORE_QLIB_CACHE_ENABLED` | `true` | 是否启用 Qlib 格式缓存 |
+
+### Prometheus 可观测性配置（v2.2.0 新增）
+| 环境变量 | 默认值 | 说明 |
+|:---------|:-------|:-----|
+| `DATACORE_METRICS_ENDPOINT_ENABLED` | `false` | 是否启用 Prometheus metrics HTTP 端点（默认关闭，按需开启） |
+| `DATACORE_METRICS_PORT` | `9090` | Prometheus metrics HTTP 服务器端口 |
+| `DATACORE_METRICS_HOST` | `0.0.0.0` | Prometheus metrics HTTP 服务器监听地址 |
+| `DATACORE_METRICS_PATH` | `/metrics` | Prometheus 抓取路径 |
+| `DATACORE_METRICS_USE_PROMETHEUS_CLIENT` | `true` | 是否优先使用 prometheus_client 库（未安装时自动降级到自定义实现） |
+| `DATACORE_OBSERVE_API_CALL_ENABLED` | `true` | 是否启用 API 层 observe_api_call 装饰器埋点 |
+| `DATACORE_OBSERVE_TOOL_CALL_ENABLED` | `true` | 是否启用 Tool 层 observe_tool_call 装饰器埋点 |
+| `DATACORE_HISTOGRAM_BUCKETS` | `0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2.5,5,10` | Histogram 桶位配置（秒，逗号分隔） |
+| `DATACORE_METRICS_DAEMON_THREAD` | `true` | metrics HTTP 服务器是否使用 daemon 线程 |
+
+> **降级策略**: prometheus_client 未安装时，自动降级到自定义 Counter/Gauge/Histogram 实现，指标功能不受影响，仅失去与 Prometheus 生态的原生集成能力。
 
 > **安全提示**: API Key 等敏感信息请通过环境变量配置，**禁止硬编码到代码中**。

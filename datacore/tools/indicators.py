@@ -7,6 +7,7 @@ from typing import Any, Optional
 import numpy as np
 
 from .base import DataCoreBaseTool
+from .schemas import IndicatorsSchema
 
 
 class DataCoreIndicatorsTool(DataCoreBaseTool):
@@ -27,6 +28,7 @@ class DataCoreIndicatorsTool(DataCoreBaseTool):
         "period (int, 可选) - 周期参数，默认指标特定；"
         "params (dict, 可选) - 其他指标特定参数"
     )
+    args_schema = IndicatorsSchema
 
     def _run(self, indicator: str, close: list[float],
              high: Optional[list[float]] = None, low: Optional[list[float]] = None,

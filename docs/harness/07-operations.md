@@ -1,11 +1,64 @@
 # Data-Core Operations
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.4.0 | Updated: 2026-07-20
 
 ## Version History
 
 | 版本 | 日期 | 变更说明 |
 |:-----|:-----|:---------|
+| **v2.4.0** | **2026-07-20** | **Provider adjustment 参数打通版：消费端可通过 adjustment="none" 获取未复权原始数据** |
+| | | • 修复 Provider 层强制复权导致无法获取原始数据的 Bug（G34） |
+| | | • tencent.py 股票 K 线支持 adjustment 参数：qfq/hfq/none（API: qfq/hfq/不带参数） |
+| | | • eastmoney.py 股票 K 线支持 adjustment 参数：qfq/hfq/none（API: fqt=1/2/0） |
+| | | • api.py params 直接透传到 Provider，支持 dc.get("600519", OHLCV, {"adjustment": "none"}) |
+| | | • 新增 tests/test_adjustment_provider.py（20 个 adjustment 参数测试） |
+| | | • 测试总数 1974 个（1964 + 10） |
+| | | • ruff 代码审计零错误 |
+| **v2.3.0** | **2026-07-20** | **FDT 集成修复版：SymbolRegistry A 股识别 + 东方财富期货 secid 修复** |
+| | | • 修复 SymbolRegistry 不识别 A 股代码的 Bug（G32） |
+| | | • 新增 _guess_equity_market() 规则识别：6 位数字→STOCK，510/511/512/513/515/588/159/516 前缀→ETF，110/113/118/127/128/132/133 前缀→CB |
+| | | • 无需显式注册全部 A 股股票，SymbolRegistry 自动按规则识别 |
+| | | • 修复 eastmoney.py 期货 secid 格式过时的 Bug（G33） |
+| | | • eastmoney.py 期货 secid 从 "CF.RB" 改为带交易所前缀的主力合约探测 |
+| | | • 遍历 [115.RB9999, 113.RB9999, 114.RB9999, 8.RB9999] 候选，第一个返回非空即采用 |
+| | | • 修复后 FDT 可正常切换到 Data-Core 数据源 |
+| | | • 新增 tests/test_registry_equity.py（10 个 A 股识别测试） |
+| | | • 新增 tests/test_eastmoney_fix.py（5 个 secid 修复测试） |
+| | | • 测试总数 1452 个（1437 + 15） |
+| | | • ruff 代码审计零错误 |
+| **v2.2.0** | **2026-07-20** | **Prometheus 可观测性集成版：observability.py + metrics_endpoint.py + 11 个标准指标 + 装饰器埋点** |
+| | | • 新增 datacore/observability.py — Prometheus 可观测性核心模块 |
+| | | • Counter/Gauge/Histogram 自定义实现（prometheus_client 可选依赖） |
+| | | • 11 个标准指标：api_requests_total / api_request_duration_seconds / api_errors_total / source_degradations_total / source_availability / cache_hits_total / cache_misses_total / resampler_operations_total / issues_open / tool_invocations_total / tool_errors_total |
+| | | • observe_api_call 装饰器：API 层埋点（UnifiedDataProvider.get()） |
+| | | • observe_tool_call 装饰器：Tool 层埋点（DataCoreBaseTool.invoke()） |
+| | | • 线程安全实现（threading.Lock 保护所有指标更新） |
+| | | • 新增 datacore/metrics_endpoint.py — Prometheus HTTP 端点模块 |
+| | | • generate_metrics() 生成 Prometheus exposition format 文本 |
+| | | • start_metrics_server(port=9090) 启动 HTTP 服务器（daemon 线程） |
+| | | • 支持 /metrics、/healthz、/ 三个端点 |
+| | | • stop_metrics_server() 优雅关闭 |
+| | | • API 层埋点：api.py UnifiedDataProvider.get() 添加 observe_api_call 装饰器 |
+| | | • Tool 层埋点：tools/base.py DataCoreBaseTool.invoke() 添加 observe_tool_call 装饰器 |
+| | | • Issue 埋点：issue.py report() 完成后更新 issues_open gauge |
+| | | • Resampler 埋点：resampler/ohlcv.py resample_ohlcv() 完成后递增 resampler_operations counter |
+| | | • metrics.py 增强：新增 _format_prometheus() 方法，保留 MetricsCollector 向后兼容 |
+| | | • prometheus_client 为可选依赖，未安装时自动降级到自定义 Counter/Gauge/Histogram 实现 |
+| | | • 新增 tests/test_observability.py（19 个测试用例） |
+| | | • 测试总数 1437 个（1418 + 19） |
+| | | • ruff 代码审计零错误 |
+| **v2.1.0** | **2026-07-20** | **缺口补全版：API 层周期自动转换 + BaseTool args_schema 补全** |
+| | | • UnifiedDataProvider.get() 对 OHLCV 类型数据自动重采样（API 层周期自动转换） |
+| | | • 支持周期：1m, 5m, 15m, 30m, 60m, daily, weekly, monthly |
+| | | • 自动推断源周期，出错时降级返回原始数据 |
+| | | • 在 payload.meta 中记录 resampled_from 源周期 |
+| | | • 异步接口（AsyncDataProvider）自动继承周期转换能力 |
+| | | • 新增 datacore/tools/schemas.py，包含 23 个 Pydantic Schema 类 |
+| | | • 23 个 Tool 全部配备 args_schema（Pydantic BaseModel） |
+| | | • pydantic 为可选依赖，未安装时 args_schema = None，不影响使用 |
+| | | • 完全兼容 LangChain StructuredTool |
+| | | • 测试总数仍为 1418 个（新增功能通过既有测试覆盖） |
+| | | • ruff 代码审计零错误 |
 | **v2.0.0** | **2026-07-20** | **统一数据枢纽完整版：FDT 兼容层 + Qlib/RD-Agent 适配器 + 终验通过** |
 | | | • 新增 FDT 兼容层（datacore/fdc_compat.py），提供 FDC 兼容的函数签名 |
 | | | • FDC 兼容函数签名映射：get_kline/get_quote/get_fundamental/get_indicators 等 |
@@ -120,12 +173,14 @@ Version: v2.0.0 | Updated: 2026-07-20
 | - | `tqsdk>=3.0` | 天勤 TqSdk（v1.2.0 新增，可选，TqSdkProvider 兜底） |
 | - | `beautifulsoup4>=4.12` | HTML 解析（v1.3.0，采集模块增强） |
 | - | `langchain-core>=0.1` | LangChain Core（v1.3.0 新增，可选，BaseTool 协议兼容） |
+| - | `pydantic>=2.0` | Pydantic（v2.1.0 新增，可选，BaseTool args_schema） |
 | - | `pyqlib>=0.9` | Qlib 量化投资框架（v2.0.0 新增，可选，Qlib 适配器） |
+| - | `prometheus_client>=0.16` | Prometheus Client（v2.2.0 新增，可选，原生 Prometheus 指标集成；未安装时降级到自定义实现） |
 
 ## File Structure
 
 ```
-datacore/                    83 个 Python 源文件
+datacore/                    84 个 Python 源文件
 ├── __init__.py              模块初始化
 ├── api.py                   统一入口 API（含 get_health() + 缓存层）
 ├── api_async.py             AsyncDataProvider 异步双接口（v1.1.0 新增）
@@ -137,6 +192,8 @@ datacore/                    83 个 Python 源文件
 ├── metrics.py               指标收集（v0.4.0 新增）
 ├── stream.py                WebSocket 实时行情（v1.0.0 新增）
 ├── alert.py                 告警引擎（v1.0.0 新增）
+├── observability.py         Prometheus 可观测性模块（v2.2.0 新增）
+├── metrics_endpoint.py      Prometheus HTTP 端点（v2.2.0 新增）
 ├── core/                    共享基础设施（v1.1.0 新增）
 │   ├── types.py             KlineBar / QuoteData / FreshnessStatus
 │   ├── data_freshness.py    DataFreshnessAssessor 数据新鲜度评估
@@ -148,8 +205,9 @@ datacore/                    83 个 Python 源文件
 │   ├── trend_maturity.py    趋势成熟度评估
 │   ├── talib_wrapper.py     TA-Lib 封装兜底
 │   └── __init__.py          导出 compute_indicators / INDICATOR_NAMES / assess_trend_maturity
-├── tools/                   BaseTool 接口层（v1.3.0 新增，核心交付）
+├── tools/                   BaseTool 接口层（v1.3.0 新增，v2.1.0 增强，核心交付）
 │   ├── base.py              DataCoreBaseTool 基类（兼容 LangChain 协议）
+│   ├── schemas.py           23 个 Pydantic Schema 类（v2.1.0 新增，args_schema）
 │   ├── ohlcv.py / quote.py / sentiment.py / health.py
 │   ├── list_symbols.py / macro.py / fundamental.py / f10.py
 │   ├── indicators.py / term_structure.py / basis.py / market_regime.py / news.py
@@ -241,7 +299,8 @@ datacore/                    83 个 Python 源文件
 │   │   └── __init__.py
 │   └── __init__.py
 
-tests/                       39 个测试文件，1418 个测试用例
+tests/                       40 个测试文件，1437 个测试用例
+├── test_observability.py    Prometheus 可观测性测试（v2.2.0 新增，19 个用例）
 ├── test_fdc_compat.py       FDT 兼容层测试（v2.0.0 新增，98 个用例）
 ├── test_qlib_adapter.py     Qlib/RD-Agent 适配器测试（v2.0.0 新增，99 个用例）
 ├── test_tools.py            BaseTool 接口层测试（v1.3.0 新增，89 个用例）
@@ -284,4 +343,4 @@ docs/                        部署 + 安全 + 工程规范文档
 ├── PRODUCTION_PLAN.md       生产计划
 └── harness/                 9 个工程规范文档
 
-**总计: 100+ 个源文件 + 39 个测试文件 + 10 个工程/部署/安全文档**
+**总计: 100+ 个源文件 + 40 个测试文件 + 10 个工程/部署/安全文档**

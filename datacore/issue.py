@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from .observability import update_issues_open
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,11 +69,18 @@ class IssueRegistry:
 
         self._issues.append(issue)
         logger.info(
-            f"[Issue] reported: {issue.issue_type.value} - "
-            f"{issue.symbol}/{issue.data_type} by {issue.consumer}"
+            "[Issue] reported: %s - %s/%s by %s",
+            issue.issue_type.value, issue.symbol, issue.data_type, issue.consumer
         )
 
         mitigation = self._auto_mitigate(issue)
+
+        # 更新 issues_open gauge（最小侵入埋点）
+        try:
+            stats = self.stats()
+            update_issues_open(stats.get("unresolved_by_type", {}))
+        except Exception:
+            pass
 
         return {
             "reported": True,
@@ -132,8 +141,8 @@ class IssueRegistry:
             })
 
         logger.debug(
-            f"[Issue] mitigation for {issue.issue_type.value}: "
-            f"{strategy['action']}"
+            "[Issue] mitigation for %s: %s",
+            issue.issue_type.value, strategy['action']
         )
         return strategy
 

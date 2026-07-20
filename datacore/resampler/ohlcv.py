@@ -8,6 +8,7 @@ from __future__ import annotations
 import pandas as pd
 
 from datacore.resampler.registry import get_pandas_freq, is_finer
+from datacore.observability import record_resampler_operation
 
 
 def resample_ohlcv(
@@ -68,6 +69,12 @@ def resample_ohlcv(
     result = df.resample(target_freq, label="left", closed="left").agg(agg_dict)
 
     result = result.dropna(how="all")
+
+    # 记录重采样操作 counter（最小侵入埋点）
+    try:
+        record_resampler_operation(source_period, target_period)
+    except Exception:
+        pass
 
     return result
 

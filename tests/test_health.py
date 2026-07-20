@@ -1,7 +1,6 @@
 """Tests for datacore.health — HealthChecker 健康检查器。"""
 from __future__ import annotations
 
-import pytest
 from datacore.health import HealthChecker
 
 

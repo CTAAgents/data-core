@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, Callable
 
 
 def old_ma(values: np.ndarray, n: int) -> np.ndarray:
@@ -245,7 +246,7 @@ def old_atr(high: np.ndarray, low: np.ndarray, close: np.ndarray,
     return old_ma(tr, n)
 
 
-LEGACY_FUNCTIONS: dict[str, callable] = {
+LEGACY_FUNCTIONS: dict[str, Callable[..., Any]] = {
     "old_ma": old_ma,
     "old_ema": old_ema,
     "old_rsi": old_rsi,

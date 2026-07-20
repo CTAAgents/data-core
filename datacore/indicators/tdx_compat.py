@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, Callable
 
 from datacore.indicators.core import _shift
 
@@ -502,7 +503,7 @@ def tdx_cci(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 
     return cci_val
 
 
-TDX_INDICATOR_MAP: dict[str, callable] = {
+TDX_INDICATOR_MAP: dict[str, Callable[..., Any]] = {
     "MA": tdx_ma,
     "KDJ": tdx_kdj,
     "MACD": tdx_macd,

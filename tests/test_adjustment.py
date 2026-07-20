@@ -31,14 +31,25 @@ from datacore.adjustment.futures import (
     get_dominant_series,
     get_rollover_pairs,
     build_continuous_contract,
-    adjust_rollover_qfq,
-    adjust_rollover_hfq,
     adjust_rollover_none,
+)
+from datacore.adjustment.futures.adjust_methods import _calculate_rollover_gap
+from datacore.adjustment.futures.continuous import (
+    _concat_by_dominant,
+    _empty_kline_df,
+)
+from datacore.adjustment.futures.dominant_contract import (
+    _collect_all_dates,
+    _build_indicator_matrix,
 )
 from datacore.adjustment.registry import (
     parse_adjustment_config,
     is_futures_adjustment,
     is_equity_adjustment,
+)
+from datacore.adjustment.engine import (
+    _apply_equity_adjustment,
+    _passthrough,
 )
 
 
@@ -83,7 +94,7 @@ def _generate_futures_kline_dict(
     for i, contract in enumerate(contracts):
         start_offset = i * 20
         dates = pd.date_range(
-            f"2024-12-01",
+            "2024-12-01",
             periods=n_per_contract + start_offset,
             freq="B",
         )
@@ -537,6 +548,24 @@ class TestAdjustMethods:
         pd.testing.assert_frame_equal(result, cont)
         assert result is not cont
 
+    def test_calculate_rollover_gap_missing_prices(self):
+        """无法获取价格时价差为 0。"""
+        kline_dict = {
+            "RB2501": pd.DataFrame({
+                "date": pd.to_datetime(["2025-01-01"]),
+                "close": [100.0],
+            }),
+        }
+        gap = _calculate_rollover_gap(
+            pd.Timestamp("2025-01-02"),
+            "RB2501",
+            "MISSING",
+            kline_dict,
+            "date",
+            "close",
+        )
+        assert pytest.approx(gap) == 0.0
+
 
 # ============================================================
 #  注册表测试
@@ -772,6 +801,293 @@ class TestEdgeCases:
         """空数据连续合约。"""
         with pytest.raises(ValueError):
             build_continuous_contract({})
+
+
+# ============================================================
+#  补充：连续合约边界覆盖
+# ============================================================
+
+class TestContinuousContractEdgeCases:
+    """连续合约拼接边界分支补充测试。"""
+
+    def test_empty_dominant_series_returns_empty_df(self):
+        """主力序列为空时返回空 K 线 DataFrame。"""
+        kline_dict = {
+            "RB2501": pd.DataFrame(columns=[
+                "date", "open", "high", "low", "close",
+                "volume", "amount", "open_interest",
+            ]),
+        }
+        result = build_continuous_contract(kline_dict, rollover_method="volume")
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 0
+        assert list(result.columns) == [
+            "date", "open", "high", "low", "close",
+            "volume", "amount", "open_interest", "contract",
+        ]
+
+    def test_concat_by_dominant_nan_contract(self):
+        """主力序列含 NaN 时跳过对应日期。"""
+        kline_dict = _generate_futures_kline_dict(contracts=["RB2501"])
+        dates = pd.to_datetime(kline_dict["RB2501"]["date"])
+        dominant = pd.Series(
+            ["RB2501", np.nan, "RB2501"],
+            index=dates[:3],
+            dtype=object,
+        )
+        result = _concat_by_dominant(kline_dict, dominant, "date")
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 2
+
+    def test_concat_by_dominant_missing_contract(self):
+        """主力合约不在 kline_dict 中时跳过。"""
+        kline_dict = _generate_futures_kline_dict(contracts=["RB2501"])
+        dates = pd.to_datetime(kline_dict["RB2501"]["date"])
+        dominant = pd.Series(
+            ["RB2501", "MISSING", "RB2501"],
+            index=dates[:3],
+            dtype=object,
+        )
+        result = _concat_by_dominant(kline_dict, dominant, "date")
+        assert len(result) == 2
+
+    def test_concat_by_dominant_no_matching_date(self):
+        """主力合约存在但当日无数据时跳过。"""
+        kline_dict = _generate_futures_kline_dict(contracts=["RB2501"])
+        dates = pd.to_datetime(kline_dict["RB2501"]["date"])
+        # 构造一个不在 kline_dict 中的日期
+        extra_date = dates[0] + pd.Timedelta(days=365)
+        dominant = pd.Series(
+            ["RB2501", "RB2501"],
+            index=[dates[0], extra_date],
+            dtype=object,
+        )
+        result = _concat_by_dominant(kline_dict, dominant, "date")
+        assert len(result) == 1
+
+    def test_empty_kline_df_columns(self):
+        """空 K 线 DataFrame 包含标准列。"""
+        result = _empty_kline_df("date")
+        assert list(result.columns) == [
+            "date", "open", "high", "low", "close",
+            "volume", "amount", "open_interest", "contract",
+        ]
+        assert len(result) == 0
+
+    def test_concat_by_dominant_all_skipped_returns_empty(self):
+        """所有主力合约都被跳过时返回空 DataFrame。"""
+        kline_dict = _generate_futures_kline_dict(contracts=["RB2501"])
+        dates = pd.to_datetime(kline_dict["RB2501"]["date"])
+        dominant = pd.Series(
+            [np.nan, "MISSING"],
+            index=dates[:2],
+            dtype=object,
+        )
+        result = _concat_by_dominant(kline_dict, dominant, "date")
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 0
+
+
+# ============================================================
+#  补充：主力合约识别边界覆盖
+# ============================================================
+
+class TestDominantContractEdgeCases:
+    """主力合约识别边界分支补充测试。"""
+
+    def test_identify_dominant_by_oi_empty_data(self):
+        """持仓量法在空数据时返回空序列。"""
+        kline_dict = {
+            "RB2501": pd.DataFrame(columns=[
+                "date", "open", "high", "low", "close", "open_interest",
+            ]),
+        }
+        result = identify_dominant_by_oi(kline_dict)
+        assert isinstance(result, pd.Series)
+        assert len(result) == 0
+
+    def test_identify_dominant_fixed_day_empty_data(self):
+        """固定日换月在空数据时返回空序列。"""
+        kline_dict = {
+            "RB2501": pd.DataFrame(columns=["date", "close"]),
+        }
+        result = identify_dominant_fixed_day(kline_dict, switch_day=15)
+        assert isinstance(result, pd.Series)
+        assert len(result) == 0
+
+    def test_collect_all_dates_missing_date_col(self):
+        """收集日期时缺少日期列抛出异常。"""
+        kline_dict = {
+            "RB2501": pd.DataFrame({"close": [1.0, 2.0]}),
+        }
+        with pytest.raises(ValueError, match="缺少日期列"):
+            _collect_all_dates(kline_dict, "date")
+
+    def test_build_indicator_matrix_missing_value_col(self):
+        """指标列缺失时跳过该合约。"""
+        dates = pd.date_range("2025-01-01", periods=3)
+        kline_dict = {
+            "RB2501": pd.DataFrame({
+                "date": dates,
+                "volume": [100.0, 200.0, 300.0],
+            }),
+            "RB2505": pd.DataFrame({
+                "date": dates,
+                # 缺少 volume 列
+            }),
+        }
+        matrix = _build_indicator_matrix(
+            kline_dict, dates, "date", "volume"
+        )
+        assert matrix["RB2501"].notna().any()
+        assert matrix["RB2505"].isna().all()
+
+
+# ============================================================
+#  补充：换月检测边界覆盖
+# ============================================================
+
+class TestRolloverEdgeCases:
+    """换月检测边界分支补充测试。"""
+
+    def test_detect_rollover_dates_single_element(self):
+        """主力序列只有单元素时无换月日。"""
+        dominant = pd.Series(
+            ["RB2501"],
+            index=pd.to_datetime(["2025-01-01"]),
+            dtype=object,
+        )
+        result = detect_rollover_dates(dominant)
+        assert isinstance(result, pd.DatetimeIndex)
+        assert len(result) == 0
+
+
+# ============================================================
+#  补充：注册表边界覆盖
+# ============================================================
+
+class TestRegistryEdgeCases:
+    """注册表解析边界分支补充测试。"""
+
+    def test_parse_adjustment_config_kwargs_extra(self):
+        """额外 kwargs 透传到配置字典。"""
+        cfg = parse_adjustment_config("none", custom_param="value")
+        assert cfg["custom_param"] == "value"
+
+    def test_parse_adjustment_config_override_methods(self):
+        """kwargs 覆盖换月与调整方法。"""
+        cfg = parse_adjustment_config(
+            "continuous",
+            rollover_method="oi",
+            adjust_method="hfq",
+        )
+        assert cfg["rollover_method"] == "oi"
+        assert cfg["adjust_method"] == "hfq"
+
+
+# ============================================================
+#  补充：引擎边界覆盖
+# ============================================================
+
+class TestEngineEdgeCases:
+    """复权/换月引擎边界分支补充测试。"""
+
+    def test_adjust_method_override(self):
+        """adjust_method 参数覆盖配置。"""
+        kline_dict = _generate_futures_kline_dict(n_per_contract=40)
+        result = apply_adjustment(
+            kline_dict,
+            adjustment="continuous",
+            adjust_method="hfq",
+        )
+        assert isinstance(result, pd.DataFrame)
+
+    def test_passthrough_invalid_type(self):
+        """透传不支持的数据类型时抛出 TypeError。"""
+        with pytest.raises(TypeError, match="类型不支持"):
+            _passthrough([1, 2, 3], "date")
+
+    def test_apply_equity_unknown_method_returns_copy(self):
+        """股票复权未知方法时返回副本。"""
+        kline = _generate_stock_kline(10)
+        config = {
+            "type": "equity",
+            "equity_method": "unknown",
+        }
+        result = _apply_equity_adjustment(kline, config, [], "date")
+        pd.testing.assert_frame_equal(result, kline)
+
+    def test_unknown_config_type_passthrough(self, monkeypatch):
+        """未知配置类型回退到透传。"""
+        kline = _generate_stock_kline(10)
+        monkeypatch.setattr(
+            "datacore.adjustment.engine.parse_adjustment_config",
+            lambda *args, **kwargs: {"type": "unknown"},
+        )
+        result = apply_adjustment(kline, adjustment="something")
+        pd.testing.assert_frame_equal(result, kline)
+
+
+# ============================================================
+#  补充：股票复权边界覆盖
+# ============================================================
+
+class TestEquityEdgeCases:
+    """股票复权边界分支补充测试。"""
+
+    def test_backward_adjust_missing_date_col(self):
+        """后复权缺少日期列时抛出异常。"""
+        df = pd.DataFrame({
+            "open": [1.0], "high": [2.0], "low": [0.5], "close": [1.5],
+        })
+        with pytest.raises(ValueError, match="日期列"):
+            backward_adjust(df, dividend_info=[])
+
+    def test_backward_adjust_missing_price_col(self):
+        """后复权缺少价格列时抛出异常。"""
+        df = pd.DataFrame({"date": ["2025-01-01"]})
+        with pytest.raises(ValueError, match="缺少必要列"):
+            backward_adjust(df, dividend_info=[])
+
+    def test_forward_adjust_missing_date_col(self):
+        """前复权缺少日期列时抛出异常。"""
+        df = pd.DataFrame({
+            "open": [1.0], "high": [2.0], "low": [0.5], "close": [1.5],
+        })
+        with pytest.raises(ValueError, match="日期列"):
+            forward_adjust(df, dividend_info=[])
+
+
+class TestDividendCalendarEdgeCases:
+    """除权除息日历边界分支补充测试。"""
+
+    def test_adjustment_factor_negative_ex_price(self):
+        """除权价非正时复权因子为 1。"""
+        event = DividendEvent(
+            ex_date="2025-06-01",
+            cash_dividend=200.0,
+            pre_close=100.0,
+        )
+        factor = event.adjustment_factor()
+        assert pytest.approx(factor) == 1.0
+
+    def test_ex_rights_price_zero_denominator(self):
+        """除权分母非正时返回前收盘价。"""
+        event = DividendEvent(
+            ex_date="2025-06-01",
+            stock_dividend=-1.0,
+        )
+        price = event.ex_rights_price(100.0)
+        assert pytest.approx(price) == 100.0
+
+    def test_build_factor_series_event_after_dates(self):
+        """事件日期晚于全部日期时不影响因子。"""
+        dates = pd.date_range("2025-01-01", periods=5, freq="B")
+        cal = DividendCalendar.from_list([
+            {"ex_date": "2026-01-01", "cash_dividend": 5.0, "pre_close": 100.0},
+        ])
+        factors = cal.build_factor_series(dates)
+        assert np.all(factors.values == 1.0)
 
 
 if __name__ == "__main__":

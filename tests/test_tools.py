@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
+import contextlib
+import importlib
+import sys
+from typing import Any, Iterator
+
 import pytest
 
 from datacore.tools.base import DataCoreBaseTool
@@ -67,6 +73,64 @@ class _ErrorTool(DataCoreBaseTool):
 
     def _run(self, **kwargs):
         raise ValueError("故意抛出的错误")
+
+
+@contextlib.contextmanager
+def _mock_pydantic_missing(module_name: str) -> Iterator[Any]:
+    """模拟 pydantic 不可用时重新导入指定模块，并在退出时恢复。"""
+    real_import = builtins.__import__
+
+    def _mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "pydantic" or name.startswith("pydantic."):
+            raise ImportError("No module named 'pydantic'")
+        return real_import(name, *args, **kwargs)
+
+    sys.modules.pop(module_name, None)
+    builtins.__import__ = _mock_import
+    try:
+        yield importlib.import_module(module_name)
+    finally:
+        builtins.__import__ = real_import
+        sys.modules.pop(module_name, None)
+        importlib.import_module(module_name)
+
+
+# ============================================================
+#  schemas.py 无 pydantic 路径测试
+# ============================================================
+
+class TestSchemasWithoutPydantic:
+    """schemas.py 在 pydantic 缺失时的行为测试。"""
+
+    def test_schemas_are_none_when_pydantic_missing(self):
+        """pydantic 不可用时所有 schema 为 None。"""
+        with _mock_pydantic_missing("datacore.tools.schemas") as schemas:
+            assert schemas.HAS_PYDANTIC is False
+            assert schemas.BaseModel is None
+            assert schemas.Field is None
+            assert schemas.OHLCVSchema is None
+            assert schemas.QuoteSchema is None
+            assert schemas.SentimentSchema is None
+            assert schemas.HealthSchema is None
+            assert schemas.ListSymbolsSchema is None
+            assert schemas.MacroSchema is None
+            assert schemas.FundamentalSchema is None
+            assert schemas.F10Schema is None
+            assert schemas.IndicatorsSchema is None
+            assert schemas.TermStructureSchema is None
+            assert schemas.BasisSchema is None
+            assert schemas.MarketRegimeSchema is None
+            assert schemas.NewsSchema is None
+            assert schemas.AdjustmentSchema is None
+            assert schemas.PeriodSchema is None
+            assert schemas.UnitUnifySchema is None
+            assert schemas.DateAlignSchema is None
+            assert schemas.DuplicateMergeSchema is None
+            assert schemas.OutlierFilterSchema is None
+            assert schemas.CrossSourceVerifySchema is None
+            assert schemas.DataMissingDetectSchema is None
+            assert schemas.CalMathComputeSchema is None
+            assert schemas.ConfigReadSchema is None
 
 
 # ============================================================
@@ -220,6 +284,24 @@ class TestDataCoreBaseTool:
         """默认 args_schema 为 None。"""
         tool = _ConcreteTool()
         assert tool.args_schema is None
+
+    def test_run_not_implemented(self):
+        """基类 _run 方法直接调用时抛出 NotImplementedError。"""
+        class _NoRunTool(DataCoreBaseTool):
+            name = "test_no_run"
+            description = "no run"
+
+            def _run(self, **kwargs):
+                return super()._run(**kwargs)
+
+        tool = _NoRunTool()
+        with pytest.raises(NotImplementedError):
+            tool._run()
+
+    def test_base_tool_import_error_branch(self):
+        """base.py 在 pydantic 缺失时 HAS_PYDANTIC 为 False。"""
+        with _mock_pydantic_missing("datacore.tools.base") as base:
+            assert base.HAS_PYDANTIC is False
 
 
 # ============================================================
@@ -517,6 +599,19 @@ class TestCleaningTools:
         })
         assert result["success"] is True
 
+    def test_outlier_filter_all_nan(self):
+        """异常值过滤 - 字段全为 NaN 时返回空掩码。"""
+        tool = OutlierFilterTool()
+        data = [{"val": None}, {"val": None}]
+        result = tool.invoke({
+            "data": data,
+            "field": "val",
+            "method": "iqr",
+            "action": "mark",
+        })
+        assert result["success"] is True
+        assert result["result"]["outlier_count"] == 0
+
     def test_outlier_filter_remove(self):
         """异常值过滤 - remove 动作。"""
         tool = OutlierFilterTool()
@@ -706,6 +801,137 @@ class TestCleaningTools:
         }
         result = tool.invoke({"series": series, "method": "interpolate"})
         assert result["success"] is True
+
+    def test_date_align_ffill(self):
+        """日期对齐 - 默认 ffill 方法。"""
+        tool = DateAlignTool()
+        series = {
+            "a": [
+                {"datetime": "2024-01-01", "value": 1},
+                {"datetime": "2024-01-03", "value": 3},
+            ],
+        }
+        result = tool.invoke({"series": series})
+        assert result["success"] is True
+        assert result["result"]["method"] == "ffill"
+
+    def test_date_align_exception(self, mocker):
+        """日期对齐异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.cleaning.date_align.pd.DataFrame",
+            side_effect=RuntimeError("align error"),
+        )
+        tool = DateAlignTool()
+        result = tool.invoke({"series": {"a": []}})
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "align error" in result["result"]["error"]
+
+    def test_duplicate_merge_non_numeric(self):
+        """重复合并 mean 策略保留非数值列。"""
+        tool = DuplicateMergeTool()
+        data = [
+            {"id": 1, "value": 10, "tag": "a"},
+            {"id": 1, "value": 30, "tag": "b"},
+        ]
+        result = tool.invoke({
+            "data": data,
+            "keys": ["id"],
+            "strategy": "mean",
+        })
+        assert result["success"] is True
+        assert "tag" in result["result"]["data"][0]
+
+    def test_duplicate_merge_unknown_strategy(self):
+        """重复合并未知策略默认 first。"""
+        tool = DuplicateMergeTool()
+        data = [
+            {"id": 1, "value": 10},
+            {"id": 1, "value": 30},
+        ]
+        result = tool.invoke({
+            "data": data,
+            "keys": ["id"],
+            "strategy": "unknown",
+        })
+        assert result["success"] is True
+        assert result["result"]["data"][0]["value"] == 10
+
+    def test_duplicate_merge_exception(self, mocker):
+        """重复合并异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.cleaning.duplicate_merge.pd.DataFrame",
+            side_effect=RuntimeError("dup error"),
+        )
+        tool = DuplicateMergeTool()
+        result = tool.invoke({"data": [{"id": 1}], "keys": ["id"]})
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "dup error" in result["result"]["error"]
+
+    def test_outlier_filter_rolling(self):
+        """异常值过滤 - rolling 方法返回空掩码。"""
+        tool = OutlierFilterTool()
+        data = [{"val": i} for i in range(10)]
+        result = tool.invoke({
+            "data": data,
+            "field": "val",
+            "method": "rolling",
+        })
+        assert result["success"] is True
+        assert result["result"]["outlier_count"] == 0
+
+    def test_outlier_filter_std_zero(self):
+        """异常值过滤 - zscore 标准差为 0 时无异常。"""
+        tool = OutlierFilterTool()
+        data = [{"val": 5} for _ in range(10)]
+        result = tool.invoke({
+            "data": data,
+            "field": "val",
+            "method": "zscore",
+        })
+        assert result["success"] is True
+        assert result["result"]["outlier_count"] == 0
+
+    def test_outlier_filter_unknown_method(self):
+        """异常值过滤 - 未知检测方法默认无异常。"""
+        tool = OutlierFilterTool()
+        data = [{"val": i} for i in range(10)]
+        result = tool.invoke({
+            "data": data,
+            "field": "val",
+            "method": "unknown",
+        })
+        assert result["success"] is True
+        assert result["result"]["outlier_count"] == 0
+
+    def test_outlier_filter_exception(self, mocker):
+        """异常值过滤异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.cleaning.outlier_filter.pd.DataFrame",
+            side_effect=RuntimeError("outlier error"),
+        )
+        tool = OutlierFilterTool()
+        result = tool.invoke({"data": [{"val": 1}], "field": "val"})
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "outlier error" in result["result"]["error"]
+
+    def test_unit_unify_exception(self, mocker):
+        """单位统一异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.cleaning.unit_unify.UnitUnifyTool._convert",
+            side_effect=RuntimeError("convert error"),
+        )
+        tool = UnitUnifyTool()
+        result = tool.invoke({
+            "data": [{"value": 1}],
+            "target_unit": "万元",
+            "fields": ["value"],
+        })
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "convert error" in result["result"]["error"]
 
 
 # ============================================================
@@ -980,6 +1206,73 @@ class TestValidationTools:
         assert result["success"] is True
         assert result["result"]["issue_count"] == 0
 
+    def test_cal_math_exception(self, mocker):
+        """数学校验异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.validation.cal_math.pd.DataFrame",
+            side_effect=RuntimeError("cal error"),
+        )
+        tool = CalMathComputeTool()
+        result = tool.invoke({"data": [], "operation": "sum"})
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "cal error" in result["result"]["error"]
+
+    def test_cal_math_rolling_unknown_func(self):
+        """数学校验滚动计算未知函数默认 mean。"""
+        tool = CalMathComputeTool()
+        data = [{"val": i} for i in range(5)]
+        result = tool.invoke({
+            "data": data,
+            "operation": "rolling_calc",
+            "params": {"window": 2, "func": "unknown"},
+        })
+        assert result["success"] is True
+        assert len(result["result"]["results"]["val"]) == 5
+
+    def test_cross_source_verify_unknown_method(self):
+        """跨源校验未知对比方法默认 diff。"""
+        tool = CrossSourceVerifyTool()
+        source_data = {
+            "src_a": [{"datetime": "2024-01-01", "price": 100}],
+            "src_b": [{"datetime": "2024-01-01", "price": 101}],
+        }
+        result = tool.invoke({
+            "source_data": source_data,
+            "field": "price",
+            "method": "unknown",
+            "tolerance": 2.0,
+        })
+        assert result["success"] is True
+        assert "comparisons" in result["result"]
+
+    def test_cross_source_verify_exception(self, mocker):
+        """跨源校验异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.validation.cross_source.pd.DataFrame",
+            side_effect=RuntimeError("cross error"),
+        )
+        tool = CrossSourceVerifyTool()
+        result = tool.invoke({
+            "source_data": {"a": []},
+            "field": "price",
+        })
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "cross error" in result["result"]["error"]
+
+    def test_missing_detect_exception(self, mocker):
+        """缺失检测异常分支返回错误信息。"""
+        mocker.patch(
+            "datacore.tools.validation.missing_detect.pd.DataFrame",
+            side_effect=RuntimeError("missing error"),
+        )
+        tool = DataMissingDetectTool()
+        result = tool.invoke({"data": []})
+        assert result["success"] is True
+        assert result["result"]["success"] is False
+        assert "missing error" in result["result"]["error"]
+
 
 # ============================================================
 #  运维工具测试
@@ -1128,6 +1421,18 @@ class TestIndicatorsTool:
         })
         assert result["success"] is True
 
+    def test_macd_dict_result(self):
+        """MACD 返回 dict 类型结果并正确转换 ndarray。"""
+        tool = DataCoreIndicatorsTool()
+        close = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+        result = tool.invoke({
+            "indicator": "MACD",
+            "close": close,
+        })
+        assert result["success"] is True
+        assert isinstance(result["result"]["result"], dict)
+        assert "macd" in result["result"]["result"]
+
     def test_unsupported_indicator(self):
         """不支持的指标返回错误。"""
         tool = DataCoreIndicatorsTool()
@@ -1137,6 +1442,19 @@ class TestIndicatorsTool:
         })
         assert result["success"] is True
         assert result["result"]["success"] is False
+
+    def test_indicator_result_fallback(self, mocker):
+        """指标计算返回非 ndarray/dict 类型时的兜底转换。"""
+        tool = DataCoreIndicatorsTool()
+        mocker.patch.object(
+            tool, "_calculate", return_value=[1.0, 2.0, 3.0]
+        )
+        result = tool.invoke({
+            "indicator": "MA",
+            "close": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        assert result["success"] is True
+        assert result["result"]["result"] == [1.0, 2.0, 3.0]
 
 
 # ============================================================
@@ -1234,6 +1552,17 @@ class TestHealthTool:
         result = tool.invoke({"source": "nonexistent"})
         assert result["success"] is True
         assert result["result"]["result"]["available"] is False
+
+    def test_health_check_config_exception(self, mocker):
+        """配置检查异常分支返回不可用。"""
+        mocker.patch(
+            "datacore.config.DataCoreConfig",
+            side_effect=RuntimeError("config error"),
+        )
+        tool = DataCoreHealthTool()
+        result = tool.invoke()
+        assert result["success"] is True
+        assert result["result"]["results"]["config"]["available"] is False
 
 
 # ============================================================
@@ -1335,6 +1664,58 @@ class TestOHLCVToolWithMock:
 
         assert result["success"] is True
         assert result["result"]["symbol"] == "000001"
+
+    def test_ohlcv_dataframe_to_dict(self, mocker):
+        """payload.data 为 DataFrame 时调用 to_dict 转换。"""
+        import pandas as pd
+        from datacore.models.enums import DataType, MarketType, SourceGrade
+        from datacore.models.payload import DataPayload
+
+        df = pd.DataFrame({"close": [1.0, 2.0]})
+        mock_payload = DataPayload(
+            symbol="RB",
+            data_type=DataType.OHLCV,
+            market=MarketType.FUTURES,
+            data=df,
+            source="test",
+            grade=SourceGrade.PRIMARY,
+        )
+
+        mock_provider = mocker.MagicMock()
+        mock_provider.get.return_value = mock_payload
+        mocker.patch("datacore.api.UnifiedDataProvider", return_value=mock_provider)
+
+        tool = DataCoreOHLCVTool()
+        result = tool.invoke({"symbol": "RB"})
+        assert result["success"] is True
+        assert isinstance(result["result"]["data"], dict)
+        assert "close" in result["result"]["data"]
+
+    def test_ohlcv_array_to_list(self, mocker):
+        """payload.data 为 ndarray 时调用 tolist 转换。"""
+        import numpy as np
+        from datacore.models.enums import DataType, MarketType, SourceGrade
+        from datacore.models.payload import DataPayload
+
+        arr = np.array([1.0, 2.0, 3.0])
+        mock_payload = DataPayload(
+            symbol="RB",
+            data_type=DataType.OHLCV,
+            market=MarketType.FUTURES,
+            data=arr,
+            source="test",
+            grade=SourceGrade.PRIMARY,
+        )
+
+        mock_provider = mocker.MagicMock()
+        mock_provider.get.return_value = mock_payload
+        mocker.patch("datacore.api.UnifiedDataProvider", return_value=mock_provider)
+
+        tool = DataCoreOHLCVTool()
+        result = tool.invoke({"symbol": "RB"})
+        assert result["success"] is True
+        assert isinstance(result["result"]["data"], list)
+        assert result["result"]["data"] == [1.0, 2.0, 3.0]
 
 
 # ============================================================

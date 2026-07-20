@@ -53,9 +53,9 @@ def infer_source_period(df: pd.DataFrame) -> str | None:
         return "60m"
     elif 82800 <= total_seconds <= 90000:
         return "daily"
-    elif total_seconds > 86400 * 5 and total_seconds < 86400 * 9:
+    elif 86400 * 5 < total_seconds < 86400 * 9:
         return "weekly"
-    elif total_seconds > 86400 * 25 and total_seconds < 86400 * 35:
+    elif 86400 * 25 < total_seconds < 86400 * 35:
         return "monthly"
 
     return None

@@ -11,7 +11,6 @@ v1.0.0 新增: 单机 QPS / P50 / P95 / P99 延迟基准。
 """
 import pytest
 import time
-from typing import Any
 
 # 标记为 benchmark 类型
 pytestmark = pytest.mark.benchmark

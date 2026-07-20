@@ -1,6 +1,6 @@
 # Data-Core Observability
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.2.0 | Updated: 2026-07-20
 
 ## Data Quality Grades
 
@@ -88,6 +88,10 @@ Version: v2.0.0 | Updated: 2026-07-20
 - `operations` — 运维工具模块（v1.3.0 新增）
 - `fdc_compat` — FDT 兼容层（v2.0.0 新增）
 - `qlib_adapter` — Qlib/RD-Agent 适配器（v2.0.0 新增）
+- `api_auto_resample` — API 层周期自动转换（v2.1.0 新增）
+- `tools_args_schema` — BaseTool args_schema（v2.1.0 新增）
+- `prometheus_observability` — Prometheus 可观测性模块（v2.2.0 新增）
+- `metrics_endpoint` — Prometheus HTTP 端点（v2.2.0 新增）
 
 ## 缓存层可观测性（v0.5.0 新增）
 
@@ -186,7 +190,7 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `strength_score` | float | 趋势强度得分 |
 | `features` | dict | 原始特征字典 |
 
-## BaseTool 接口层可观测性（v1.3.0 新增）
+## BaseTool 接口层可观测性（v1.3.0 新增，v2.1.0 增强）
 
 ### Tool 调用元数据
 每个 Tool 调用结果携带完整的可观测信息：
@@ -201,6 +205,16 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `input_params` | dict | 输入参数摘要 |
 | `output_rows` | int | 输出数据行数 |
 
+### args_schema 元数据（v2.1.0 新增）
+每个 Tool 携带 args_schema 相关信息：
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `args_schema_available` | bool | args_schema 是否可用（pydantic 是否已安装） |
+| `args_schema_class` | str | args_schema 类名（如 OhlcvToolSchema） |
+| `args_schema_fields` | list | schema 字段列表 |
+| `args_validation_enabled` | bool | 参数校验是否启用 |
+
 ### all_tools 自动发现统计
 | 指标 | 说明 |
 |:-----|:-----|
@@ -208,6 +222,8 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `tools_by_category` | 按分类统计 Tool 数量 |
 | `tools_discovered` | 自动发现的 Tool 数量 |
 | `tools_failed_load` | 加载失败的 Tool 数量 |
+| `tools_with_args_schema` | 配备 args_schema 的 Tool 数量（v2.1.0 新增） |
+| `tools_args_schema_available` | args_schema 可用状态（v2.1.0 新增） |
 
 ### 健康检查中的 BaseTool 状态
 `get_health()` 新增：
@@ -215,6 +231,8 @@ Version: v2.0.0 | Updated: 2026-07-20
 - `base_tools.total_count`: 已注册 Tool 总数
 - `base_tools.success_rate`: Tool 调用成功率
 - `base_tools.avg_execution_time_ms`: 平均执行耗时
+- `base_tools.args_schema_available`: args_schema 是否可用（v2.1.0 新增）
+- `base_tools.tools_with_schema`: 配备 args_schema 的 Tool 数量（v2.1.0 新增）
 
 ## 复权/换月可观测性（v1.3.0 新增）
 
@@ -237,7 +255,7 @@ Version: v2.0.0 | Updated: 2026-07-20
 - `adjustment.stock_adjustments`: 股票复权次数
 - `adjustment.futures_rollovers`: 期货换月次数
 
-## 周期转换可观测性（v1.3.0 新增）
+## 周期转换可观测性（v1.3.0 新增，v2.1.0 增强）
 
 ### 周期转换元数据
 每次 resample 结果携带：
@@ -251,12 +269,25 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `target_bars` | int | 目标数据 K 线数 |
 | `resample_time_ms` | float | 转换耗时（毫秒） |
 
+### API 层周期自动转换元数据（v2.1.0 新增）
+每次 API 层自动转换后，在 payload.meta 中携带：
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `resampled_from` | str | 源周期（转换成功时） |
+| `resample_target` | str | 目标周期 |
+| `resample_triggered` | bool | 是否触发了自动转换 |
+| `resample_failed` | bool | 转换是否失败（失败时为 true） |
+| `resample_error` | str | 转换失败原因（如有） |
+
 ### 健康检查中的周期转换状态
 `get_health()` 新增：
 - `resampler.available`: 周期转换引擎是否可用（始终 true，纯计算）
 - `resampler.total_resamples`: 累计转换次数
 - `resampler.auto_used_count`: auto 模式使用次数
 - `resampler.avg_resample_time_ms`: 平均转换耗时
+- `resampler.api_auto_resample_count`: API 层自动转换次数（v2.1.0 新增）
+- `resampler.api_resample_fallback_count`: API 层转换失败降级次数（v2.1.0 新增）
 
 ## 消费者反馈可观测性（v1.3.0 新增）
 
@@ -403,6 +434,221 @@ Version: v2.0.0 | Updated: 2026-07-20
 - `freshness.expired_count`: 当前 EXPIRED 状态数据计数
 - `freshness.fresh_ratio`: 新鲜数据占比（0.0 ~ 1.0）
 
+## Prometheus 可观测性集成（v2.2.0 新增）
+
+v2.2.0 引入 Prometheus 原生可观测性集成，新增 `datacore/observability.py` 与 `datacore/metrics_endpoint.py` 两个模块，提供 11 个标准指标、2 个装饰器埋点、Prometheus exposition format HTTP 端点，全面覆盖 API/Provider/Tool/Cache/Source/Issue/Resampler 全链路。`prometheus_client` 为可选依赖，未安装时自动降级到自定义 Counter/Gauge/Histogram 实现。
+
+### 模块架构
+
+```
+observability.py                # 可观测性核心模块（v2.2.0 新增）
+  ├── 指标类型实现
+  │   ├── Counter                # 单调递增计数器
+  │   ├── Gauge                  # 可增减仪表
+  │   └── Histogram              # 延迟分布（桶位统计）
+  ├── 11 个标准指标实例
+  ├── observe_api_call(func)     # API 层装饰器
+  ├── observe_tool_call(func)    # Tool 层装饰器
+  └── threading.Lock             # 线程安全保护
+
+metrics_endpoint.py              # Prometheus HTTP 端点（v2.2.0 新增）
+  ├── generate_metrics()         # 生成 exposition format 文本
+  ├── start_metrics_server(port=9090)
+  │   ├── /metrics               # Prometheus 抓取端点
+  │   ├── /healthz               # 健康检查端点
+  │   └── /                      # 根路径（服务信息）
+  └── stop_metrics_server()      # 优雅关闭 HTTP 服务器
+
+metrics.py（v0.4.0 已实现，v2.2.0 增强）
+  ├── MetricsCollector 类        # 原有指标收集框架，向后兼容
+  └── _format_prometheus()       # 新增：将内部指标格式化为 Prometheus exposition format
+```
+
+### 11 个标准指标
+
+| 指标名称 | 类型 | 说明 | 标签 |
+|:---------|:-----|:-----|:-----|
+| `api_requests_total` | Counter | API 请求总数 | `method`, `source`, `data_type` |
+| `api_request_duration_seconds` | Histogram | API 请求延迟分布（秒） | `method`, `source` |
+| `api_errors_total` | Counter | API 错误总数 | `method`, `source`, `error_type` |
+| `source_degradations_total` | Counter | 数据源降级总次数 | `from_source`, `to_source`, `data_type` |
+| `source_availability` | Gauge | 数据源可用性（0.0~1.0） | `source` |
+| `cache_hits_total` | Counter | 缓存命中次数 | `cache_layer`（memory/duckdb） |
+| `cache_misses_total` | Counter | 缓存未命中次数 | `cache_layer` |
+| `resampler_operations_total` | Counter | 周期转换操作总数 | `source_period`, `target_period` |
+| `issues_open` | Gauge | 当前未解决问题数 | `severity` |
+| `tool_invocations_total` | Counter | Tool 调用总数 | `tool_name` |
+| `tool_errors_total` | Counter | Tool 错误总数 | `tool_name`, `error_type` |
+
+**Histogram 桶位配置**（`api_request_duration_seconds`）:
+- 默认桶位：`[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]` 秒
+- 可通过 `DATACORE_HISTOGRAM_BUCKETS` 环境变量配置
+- 覆盖 5ms 到 10s 的延迟范围，适配 HTTP 数据源典型响应时间
+
+### 装饰器埋点
+
+#### observe_api_call 装饰器（API 层埋点）
+
+```python
+from datacore.observability import observe_api_call
+
+class UnifiedDataProvider:
+    @observe_api_call
+    def get(self, symbol, data_type, period=None):
+        # 业务逻辑
+        # 装饰器自动记录：
+        #   - api_requests_total{method="get", source=..., data_type=...} += 1
+        #   - api_request_duration_seconds{method="get", source=...}.observe(耗时)
+        #   - 异常时：api_errors_total{method="get", source=..., error_type=...} += 1
+```
+
+#### observe_tool_call 装饰器（Tool 层埋点）
+
+```python
+from datacore.observability import observe_tool_call
+
+class DataCoreBaseTool:
+    @observe_tool_call
+    def invoke(self, **kwargs):
+        # 业务逻辑
+        # 装饰器自动记录：
+        #   - tool_invocations_total{tool_name=...} += 1
+        #   - api_request_duration_seconds{method="tool", source=tool}.observe(耗时)
+        #   - 异常时：tool_errors_total{tool_name=..., error_type=...} += 1
+```
+
+#### 其他埋点位置
+
+| 模块 | 埋点位置 | 指标 |
+|:-----|:--------|:-----|
+| `datacore/api.py` | `UnifiedDataProvider.get()` | `api_requests_total` / `api_request_duration_seconds` / `api_errors_total` |
+| `datacore/tools/base.py` | `DataCoreBaseTool.invoke()` | `tool_invocations_total` / `api_request_duration_seconds` / `tool_errors_total` |
+| `datacore/issue.py` | `report()` | `issues_open`（Gauge 增减） |
+| `datacore/resampler/ohlcv.py` | `resample_ohlcv()` | `resampler_operations_total` |
+| `datacore/store/cache.py` | 缓存命中分支 | `cache_hits_total` / `cache_misses_total` |
+| `datacore/breaker.py` | 熔断触发 | `source_degradations_total` / `source_availability` |
+
+### Prometheus HTTP 端点
+
+#### 端点列表
+
+| 端点 | 方法 | 返回内容 | 说明 |
+|:-----|:-----|:---------|:-----|
+| `/metrics` | GET | Prometheus exposition format 文本 | Prometheus 抓取端点，符合标准文本格式 |
+| `/healthz` | GET | `{"status": "ok"}` JSON | 健康检查端点，Kubernetes liveness/readiness probe |
+| `/` | GET | 服务信息 JSON | 服务基本信息（版本、模块数、指标数） |
+
+#### 启动与关闭
+
+```python
+from datacore.metrics_endpoint import start_metrics_server, stop_metrics_server
+
+# 启动 metrics HTTP 服务器（daemon 线程，不阻塞主进程）
+start_metrics_server(port=9090)
+
+# 优雅关闭
+stop_metrics_server()
+```
+
+**特性**:
+- daemon 线程运行：HTTP 服务器在 daemon 线程中运行，主进程退出时自动结束
+- 优雅关闭：`stop_metrics_server()` 显式关闭 HTTP 服务器
+- 端口可配置：默认 9090，可通过 `DATACORE_METRICS_PORT` 环境变量配置
+- 监听地址可配置：默认 `0.0.0.0`，可通过 `DATACORE_METRICS_HOST` 配置
+
+### Prometheus exposition format 示例
+
+`/metrics` 端点输出符合 Prometheus 标准文本格式：
+
+```
+# HELP api_requests_total Total API requests count
+# TYPE api_requests_total counter
+api_requests_total{method="get",source="tdx_lc",data_type="OHLCV"} 1234
+api_requests_total{method="get",source="eastmoney",data_type="OHLCV"} 567
+
+# HELP api_request_duration_seconds API request duration in seconds
+# TYPE api_request_duration_seconds histogram
+api_request_duration_seconds_bucket{method="get",source="tdx_lc",le="0.005"} 1100
+api_request_duration_seconds_bucket{method="get",source="tdx_lc",le="0.01"} 1180
+api_request_duration_seconds_bucket{method="get",source="tdx_lc",le="0.025"} 1220
+api_request_duration_seconds_bucket{method="get",source="tdx_lc",le="0.05"} 1230
+api_request_duration_seconds_bucket{method="get",source="tdx_lc",le="0.1"} 1234
+api_request_duration_seconds_bucket{method="get",source="tdx_lc",le="+Inf"} 1234
+api_request_duration_seconds_count{method="get",source="tdx_lc"} 1234
+api_request_duration_seconds_sum{method="get",source="tdx_lc"} 12.34
+
+# HELP source_availability Data source availability (0.0~1.0)
+# TYPE source_availability gauge
+source_availability{source="tdx_lc"} 1.0
+source_availability{source="eastmoney"} 1.0
+source_availability{source="qmt"} 0.0
+
+# HELP issues_open Currently open issues
+# TYPE issues_open gauge
+issues_open{severity="LOW"} 3
+issues_open{severity="MEDIUM"} 1
+issues_open{severity="HIGH"} 0
+issues_open{severity="CRITICAL"} 0
+
+# HELP tool_invocations_total Total tool invocations
+# TYPE tool_invocations_total counter
+tool_invocations_total{tool_name="OhlcvTool"} 456
+tool_invocations_total{tool_name="QuoteTool"} 789
+```
+
+### 线程安全
+
+所有指标更新操作均通过 `threading.Lock` 保护：
+
+| 操作 | 锁粒度 | 并发安全性 |
+|:-----|:-------|:----------|
+| Counter.inc(value=1) | 全局锁 | ✅ 线程安全 |
+| Counter.inc(value=N) | 全局锁 | ✅ 线程安全 |
+| Gauge.set(value) | 全局锁 | ✅ 线程安全 |
+| Gauge.inc(delta) | 全局锁 | ✅ 线程安全 |
+| Gauge.dec(delta) | 全局锁 | ✅ 线程安全 |
+| Histogram.observe(value) | 全局锁 | ✅ 线程安全 |
+| generate_metrics() | 快照读 | ✅ 一致性快照 |
+
+**性能开销**: 单次加锁开销 < 0.1ms，对 API/Tool 调用性能影响可忽略。
+
+### prometheus_client 可选依赖
+
+| 模式 | 触发条件 | 指标行为 | HTTP 端点 |
+|:-----|:--------|:---------|:----------|
+| 原生 prometheus_client (P0) | `prometheus_client` 已安装 | 使用原生 Counter/Gauge/Histogram | `prometheus_client.generate_latest()` |
+| 自定义实现 (P1) | `prometheus_client` 未安装 | 使用 observability.py 自定义实现 | `generate_metrics()` 自定义文本格式 |
+
+> **降级保证**: 两种模式下指标语义完全一致，业务代码无需感知差异。HTTP 端点输出均符合 Prometheus exposition format 标准。
+
+### metrics.py 向后兼容
+
+`datacore/metrics.py` 的 `MetricsCollector` 类保留原有接口（v0.4.0 引入），新增 `_format_prometheus()` 方法将内部指标转换为 Prometheus exposition format：
+
+```python
+from datacore.metrics import MetricsCollector
+
+collector = MetricsCollector()
+# 原有 API 完全保留，向后兼容
+collector.record_call(method="get", source="tdx_lc", success=True, latency_ms=15)
+report = collector.report()
+
+# 新增：Prometheus 格式输出
+prometheus_text = collector._format_prometheus()
+```
+
+### 健康检查中的 Prometheus 状态
+
+`get_health()` 新增：
+- `prometheus_observability.available`: 可观测性模块是否可用（始终 true）
+- `prometheus_observability.implementation`: 实现模式（`prometheus_client_native` / `custom_implementation`）
+- `prometheus_observability.metrics_count`: 已注册指标数（11）
+- `prometheus_observability.total_samples`: 累计指标样本数
+- `metrics_endpoint.available`: HTTP 端点是否运行
+- `metrics_endpoint.port`: 监听端口
+- `metrics_endpoint.endpoints`: 启用的端点列表（`/metrics`, `/healthz`, `/`）
+- `metrics_endpoint.uptime_seconds`: 端点运行时长（秒）
+
 ## 指标收集（v0.4.0 已实现，v1.0.0 扩展）
 
 已关闭差距: G05 [P2]
@@ -460,8 +706,30 @@ MetricsCollector 统计以下指标：
 | `qlib_adapter_expression_used_count` | Counter | Qlib 表达式引擎使用次数（v2.0.0 新增） |
 | `qlib_adapter_degradation_count` | Counter | Qlib 适配器降级次数（v2.0.0 新增） |
 | `qlib_adapter_avg_conversion_time_ms` | Gauge | Qlib 平均格式转换耗时（毫秒）（v2.0.0 新增） |
+| `api_auto_resample_total` | Counter | API 层自动转换总次数（v2.1.0 新增） |
+| `api_auto_resample_triggered` | Counter | API 层触发自动转换次数（v2.1.0 新增） |
+| `api_auto_resample_fallback` | Counter | API 层转换失败降级次数（v2.1.0 新增） |
+| `api_auto_resample_avg_time_ms` | Gauge | API 层平均转换耗时（毫秒）（v2.1.0 新增） |
+| `tools_args_schema_available` | Gauge | args_schema 是否可用（v2.1.0 新增） |
+| `tools_with_args_schema_count` | Gauge | 配备 args_schema 的 Tool 数量（v2.1.0 新增） |
+| `tools_args_validation_count` | Counter | args_schema 参数校验次数（v2.1.0 新增） |
+| `api_requests_total` | Counter | API 请求总数（Prometheus 标准，v2.2.0 新增） |
+| `api_request_duration_seconds` | Histogram | API 请求延迟分布（秒，v2.2.0 新增） |
+| `api_errors_total` | Counter | API 错误总数（v2.2.0 新增） |
+| `source_degradations_total` | Counter | 数据源降级总次数（v2.2.0 新增） |
+| `source_availability` | Gauge | 数据源可用性 0.0~1.0（v2.2.0 新增） |
+| `cache_hits_total` | Counter | 缓存命中次数（Prometheus 标准，v2.2.0 新增） |
+| `cache_misses_total` | Counter | 缓存未命中次数（Prometheus 标准，v2.2.0 新增） |
+| `resampler_operations_total` | Counter | 周期转换操作总数（v2.2.0 新增） |
+| `issues_open` | Gauge | 当前未解决问题数（Prometheus 标准，v2.2.0 新增） |
+| `tool_invocations_total` | Counter | Tool 调用总数（Prometheus 标准，v2.2.0 新增） |
+| `tool_errors_total` | Counter | Tool 错误总数（v2.2.0 新增） |
+| `prometheus_metrics_endpoint_uptime_seconds` | Gauge | metrics HTTP 端点运行时长（v2.2.0 新增） |
+| `prometheus_implementation_mode` | Gauge | 实现模式（0=custom, 1=prometheus_client，v2.2.0 新增） |
 
 > 指标数据可通过 `MetricsCollector.report()` 获取完整快照。
+>
+> v2.2.0 新增：通过 `/metrics` HTTP 端点可获取 Prometheus exposition format，支持 Prometheus/Grafana 原生抓取与可视化。详见上文 [Prometheus 可观测性集成](#prometheus-可观测性集成v220-新增) 章节。
 
 ## 安全审计可观测性（v1.0.0 新增）
 

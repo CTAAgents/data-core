@@ -19,25 +19,41 @@ class EastMoneyFuturesProvider(FuturesDataSource):
         DataType.FUTURES_POSITION, DataType.FUTURES_WAREHOUSE_RECEIPT,
     }
 
+    # 期货 secid 候选前缀（交易所代码 + 主力合约标记）
+    # 115=中金所, 113=上期所, 114=上期能源, 8=广期所, 42=大商所, 28=郑商所
+    _FUTURES_SECID_PREFIXES = ("115", "113", "114", "8", "42", "28")
+
+    def _build_secid_candidates(self, symbol: str) -> list[str]:
+        """构造主力合约 secid 候选列表。"""
+        sym = symbol.upper()
+        return [f"{prefix}.{sym}9999" for prefix in self._FUTURES_SECID_PREFIXES]
+
     def fetch_kline(self, symbol: str, period: str = "daily", days: int = 120) -> Optional[KlineData]:
-        """通过东方财富公开 API 获取期货 K 线。"""
-        secid = f"CF.{symbol.upper()}"
+        """通过东方财富公开 API 获取期货 K 线。
+
+        遍历各交易所 secid 候选，第一个返回非空数据即采用。
+        """
+        secid_candidates = self._build_secid_candidates(symbol)
+        klt = 101 if period == "daily" else 60
         try:
             with httpx.Client(timeout=10) as c:
-                resp = c.get(
-                    "https://push2his.eastmoney.com/api/qt/stock/kline/get",
-                    params={
-                        "secid": secid,
-                        "fields1": "f1,f2,f3,f4,f5,f6",
-                        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
-                        "klt": 101 if period == "daily" else 60,
-                        "fqt": 1,
-                        "end": "20500101",
-                        "lmt": days,
-                    },
-                )
-                data = resp.json().get("data", {})
-                klinedata = data.get("klinedata", []) if data else []
+                for secid in secid_candidates:
+                    resp = c.get(
+                        "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+                        params={
+                            "secid": secid,
+                            "fields1": "f1,f2,f3,f4,f5,f6",
+                            "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+                            "klt": klt,
+                            "fqt": 1,
+                            "end": "20500101",
+                            "lmt": days,
+                        },
+                    )
+                    data = resp.json().get("data", {})
+                    klinedata = data.get("klinedata", []) if data else []
+                    if klinedata:
+                        break
         except Exception:
             return None
         if not klinedata:

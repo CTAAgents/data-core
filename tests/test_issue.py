@@ -1,7 +1,6 @@
 """Tests for datacore.issue — 消费者反馈通道模块。"""
 from __future__ import annotations
 
-import pytest
 from datacore.issue import IssueType, DataIssue, IssueRegistry
 from datacore.api import UnifiedDataProvider
 

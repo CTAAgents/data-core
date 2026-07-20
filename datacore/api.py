@@ -1,14 +1,20 @@
 """UnifiedDataProvider - Data-Core unified data entry point."""
 
 from __future__ import annotations
+import logging
 import time
 from typing import Any, Optional
+
+import pandas as pd
 
 from .models.enums import DataType, MarketType, SourceGrade
 from .models.payload import DataPayload
 from .models.ohlcv import KBar, KlineData
 from .registry.symbol_registry import SymbolRegistry
 from .issue import IssueRegistry, DataIssue
+from .observability import observe_api_call, update_source_availability
+
+logger = logging.getLogger(__name__)
 
 _futures_provider: Any = None
 _equity_provider: Any = None
@@ -120,6 +126,7 @@ class UnifiedDataProvider:
         self.registry = SymbolRegistry()
         self._issues = IssueRegistry()
 
+    @observe_api_call
     def get(self, symbol: str, data_type: DataType,
             params: dict | None = None) -> DataPayload:
         """Fetch data for the given symbol and type."""
@@ -166,6 +173,10 @@ class UnifiedDataProvider:
                 errors=[f"{market} module does not support {data_type}"],
                 collected_at=collected_at,
             )
+
+        # ── OHLCV 自动周期转换（v2.x 新增）──
+        if data_type == DataType.OHLCV and payload.available:
+            payload = self._maybe_resample_ohlcv(payload, params)
 
         # ── 缓存写回（v0.5.0）──
         if payload.available:
@@ -335,6 +346,151 @@ class UnifiedDataProvider:
             )
 
     # ─────────────────────────────────────────────────────────
+    # OHLCV 自动周期转换（v2.x 新增）
+    # ─────────────────────────────────────────────────────────
+
+    def _maybe_resample_ohlcv(self, payload: DataPayload,
+                              params: dict | None) -> DataPayload:
+        """如果请求的 period 比数据源返回的周期更粗，自动重采样。
+
+        只处理 OHLCV 类型，出错时降级返回原始数据。
+        """
+        try:
+            params = params or {}
+            target_period = params.get("period")
+            if not target_period:
+                return payload
+
+            from .resampler.registry import is_finer, validate_period
+            try:
+                validate_period(target_period)
+            except ValueError:
+                return payload
+
+            source_period = self._detect_source_period(payload)
+            if source_period is None:
+                return payload
+
+            try:
+                if not is_finer(source_period, target_period):
+                    return payload
+            except ValueError:
+                return payload
+
+            df = self._payload_to_dataframe(payload)
+            if df is None or df.empty:
+                return payload
+
+            from .resampler.ohlcv import resample_ohlcv
+            resampled_df = resample_ohlcv(df, target_period, source_period)
+            if resampled_df is None or resampled_df.empty:
+                return payload
+
+            new_payload = self._dataframe_to_payload(
+                resampled_df, payload, target_period
+            )
+            new_payload.meta["resampled_from"] = source_period
+            new_payload.warnings.append(
+                f"数据已从 {source_period} 重采样到 {target_period}"
+            )
+            return new_payload
+
+        except Exception as e:
+            logger.warning("OHLCV 自动重采样失败，返回原始数据: %s", e)
+            return payload
+
+    @staticmethod
+    def _detect_source_period(payload: DataPayload) -> str | None:
+        """从 payload 中推断源数据周期。
+
+        优先从 KlineData.period 或 meta 中获取，否则从数据推断。
+        """
+        data = payload.data
+
+        if isinstance(data, KlineData):
+            if data.period:
+                return data.period
+
+        if isinstance(data, pd.DataFrame):
+            from .resampler.auto import infer_source_period
+            return infer_source_period(data)
+
+        if isinstance(data, KlineData) and data.bars:
+            df = _kline_to_dataframe(data)
+            from .resampler.auto import infer_source_period
+            return infer_source_period(df)
+
+        return None
+
+    @staticmethod
+    def _payload_to_dataframe(payload: DataPayload) -> pd.DataFrame | None:
+        """将 payload.data 转换为 DataFrame（datetime 索引）。"""
+        data = payload.data
+
+        if isinstance(data, pd.DataFrame):
+            if isinstance(data.index, pd.DatetimeIndex):
+                return data.copy()
+            if "date" in data.columns:
+                df = data.copy()
+                df["date"] = pd.to_datetime(df["date"])
+                df.set_index("date", inplace=True)
+                return df
+            return None
+
+        if isinstance(data, KlineData):
+            return _kline_to_dataframe(data)
+
+        return None
+
+    @staticmethod
+    def _dataframe_to_payload(df: pd.DataFrame, original: DataPayload,
+                              target_period: str) -> DataPayload:
+        """将重采样后的 DataFrame 包装回 DataPayload。
+
+        根据原始数据类型决定返回 KlineData 还是 DataFrame。
+        """
+        df = df.copy()
+        df.index.name = "date"
+
+        original_data = original.data
+
+        if isinstance(original_data, KlineData):
+            bars = _dataframe_to_bars(df)
+            kline_data = KlineData(
+                symbol=original.symbol,
+                period=target_period,
+                bars=bars,
+                source=getattr(original_data, "source", ""),
+                contract=getattr(original_data, "contract", ""),
+            )
+            return DataPayload(
+                symbol=original.symbol,
+                data_type=original.data_type,
+                market=original.market,
+                data=kline_data,
+                source=original.source,
+                grade=original.grade,
+                collected_at=original.collected_at,
+                meta=dict(original.meta),
+                errors=list(original.errors),
+                warnings=list(original.warnings),
+            )
+
+        df_reset = df.reset_index()
+        return DataPayload(
+            symbol=original.symbol,
+            data_type=original.data_type,
+            market=original.market,
+            data=df_reset,
+            source=original.source,
+            grade=original.grade,
+            collected_at=original.collected_at,
+            meta=dict(original.meta),
+            errors=list(original.errors),
+            warnings=list(original.warnings),
+        )
+
+    # ─────────────────────────────────────────────────────────
     # 缓存层辅助方法（v0.5.0: MemoryCache → DuckDB → HTTP）
     # ─────────────────────────────────────────────────────────
 
@@ -486,7 +642,7 @@ class UnifiedDataProvider:
         any_ok = any(v.get("available", False) for v in sources.values())
         return {
             "status": "healthy" if any_ok else "unavailable",
-            "version": "2.0.0",
+            "version": "2.3.0",
             "sources": sources,
             "consumer_issues": self._issues.stats(),
             "timestamp": time.time(),
@@ -501,4 +657,68 @@ class UnifiedDataProvider:
         except Exception:
             ok = False
         elapsed = round((time.time() - t0) * 1000, 1)
+        # 更新 source_availability gauge（最小侵入埋点）
+        try:
+            source_name = getattr(source, "name", "") or ""
+            if source_name:
+                update_source_availability(source_name, ok)
+        except Exception:
+            pass
         return {"available": ok, "latency_ms": elapsed}
+
+
+# ─────────────────────────────────────────────────────────
+# 模块级辅助函数
+# ─────────────────────────────────────────────────────────
+
+
+def _kline_to_dataframe(kline: KlineData) -> pd.DataFrame:
+    """将 KlineData 转换为带 DatetimeIndex 的 DataFrame。"""
+    if not kline.bars:
+        return pd.DataFrame(
+            columns=["open", "high", "low", "close", "volume", "amount",
+                     "open_interest", "settlement"],
+            index=pd.DatetimeIndex([]),
+        )
+
+    data = []
+    dates = []
+    for bar in kline.bars:
+        dates.append(bar.date)
+        row = {
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close,
+            "volume": bar.volume,
+            "amount": bar.amount,
+        }
+        if bar.open_interest:
+            row["open_interest"] = bar.open_interest
+        if bar.settlement:
+            row["settlement"] = bar.settlement
+        data.append(row)
+
+    df = pd.DataFrame(data, index=pd.to_datetime(dates))
+    df.index.name = "date"
+    return df
+
+
+def _dataframe_to_bars(df: pd.DataFrame) -> list[KBar]:
+    """将 DataFrame 转换为 KBar 列表。"""
+    bars = []
+    for idx, row in df.iterrows():
+        date_str = idx.strftime("%Y-%m-%d %H:%M:%S") if isinstance(idx, pd.Timestamp) else str(idx)
+        bar = KBar(
+            date=date_str,
+            open=float(row["open"]),
+            high=float(row["high"]),
+            low=float(row["low"]),
+            close=float(row["close"]),
+            volume=float(row.get("volume", 0.0)),
+            amount=float(row.get("amount", 0.0)),
+            open_interest=float(row["open_interest"]) if "open_interest" in row and pd.notna(row["open_interest"]) else 0.0,
+            settlement=float(row["settlement"]) if "settlement" in row and pd.notna(row["settlement"]) else 0.0,
+        )
+        bars.append(bar)
+    return bars

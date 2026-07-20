@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 import pandas as pd
 import numpy as np
 
@@ -87,6 +86,11 @@ class TestUnitUnify:
         assert len(UNIT_FACTORS) > 0
         assert "吨" in UNIT_FACTORS
         assert "元" in UNIT_FACTORS
+
+    def test_auto_detect_unit_usd_alias(self):
+        """自动检测单位 - USD 别名。"""
+        assert auto_detect_unit("price_usd") == "美元"
+        assert auto_detect_unit("amount in 美金") == "美元"
 
 
 # ============================================================
@@ -256,6 +260,53 @@ class TestDateAlign:
         )
         assert result["a"]["price"].iloc[1] == 0
 
+    def test_infer_frequency_exception(self, mocker):
+        """推断频率 - pd.infer_freq 抛异常时返回 D。"""
+        mocker.patch(
+            "datacore.cleaning.date_align.pd.infer_freq",
+            side_effect=ValueError("infer error"),
+        )
+        dates = pd.date_range("2024-01-01", periods=5, freq="B")
+        assert infer_frequency(dates) == "D"
+
+    def test_align_to_trading_calendar_business_freq(self):
+        """多序列对齐 - 工作日频率触发 freq 处理分支。"""
+        s1 = pd.DataFrame({
+            "datetime": ["2024-01-01", "2024-01-02"],
+            "price": [100, 101],
+        })
+        s2 = pd.DataFrame({
+            "datetime": ["2024-01-02", "2024-01-03"],
+            "price": [200, 201],
+        })
+        result = align_to_trading_calendar(
+            {"a": s1, "b": s2}, freq="B", how="outer"
+        )
+        assert "a" in result
+        assert "b" in result
+
+    def test_align_to_trading_calendar_bfill(self):
+        """多序列对齐 - bfill 方法。"""
+        s1 = pd.DataFrame({
+            "datetime": ["2024-01-01", "2024-01-03"],
+            "price": [100, 103],
+        })
+        result = align_to_trading_calendar(
+            {"a": s1}, freq="D", method="bfill"
+        )
+        assert result["a"]["price"].iloc[1] == 103
+
+    def test_align_to_trading_calendar_interpolate(self):
+        """多序列对齐 - interpolate 方法。"""
+        s1 = pd.DataFrame({
+            "datetime": ["2024-01-01", "2024-01-03", "2024-01-05"],
+            "price": [100, 102, 106],
+        })
+        result = align_to_trading_calendar(
+            {"a": s1}, freq="B", method="interpolate"
+        )
+        assert result["a"]["price"].iloc[1] == 101
+
 
 # ============================================================
 #  duplicate_merge 测试
@@ -358,6 +409,83 @@ class TestDuplicateMerge:
         result = merge_sources({"s1": src1}, ["date"], ["nonexistent", "s1"])
         assert result["val"].iloc[0] == 100
 
+    def test_deduplicate_mean_with_non_numeric(self):
+        """去重 - mean 策略保留非数值列。"""
+        df = pd.DataFrame({
+            "id": [1, 1],
+            "value": [10, 30],
+            "tag": ["a", "b"],
+        })
+        result = deduplicate_dataframe(df, ["id"], "mean")
+        assert result["value"].iloc[0] == 20
+        assert result["tag"].iloc[0] == "a"
+
+    def test_deduplicate_max_with_non_numeric(self):
+        """去重 - max 策略保留非数值列。"""
+        df = pd.DataFrame({
+            "id": [1, 1],
+            "value": [10, 30],
+            "tag": ["a", "b"],
+        })
+        result = deduplicate_dataframe(df, ["id"], "max")
+        assert result["value"].iloc[0] == 30
+        assert result["tag"].iloc[0] == "a"
+
+    def test_deduplicate_min_with_non_numeric(self):
+        """去重 - min 策略保留非数值列。"""
+        df = pd.DataFrame({
+            "id": [1, 1],
+            "value": [10, 30],
+            "tag": ["a", "b"],
+        })
+        result = deduplicate_dataframe(df, ["id"], "min")
+        assert result["value"].iloc[0] == 10
+        assert result["tag"].iloc[0] == "a"
+
+    def test_merge_by_weight_no_matching_source(self):
+        """按权重合并 - weights 中没有匹配 source_data 的源。"""
+        src1 = pd.DataFrame({"date": ["2024-01-01"], "price": [100]})
+        result = merge_by_weight(
+            {"s1": src1}, {"s2": 0.5}, ["date"]
+        )
+        assert result.empty
+
+    def test_merge_by_weight_auto_value_cols(self):
+        """按权重合并 - 自动推断 value_cols。"""
+        src1 = pd.DataFrame({"date": ["2024-01-01"], "price": [100]})
+        src2 = pd.DataFrame({"date": ["2024-01-01"], "price": [110]})
+        result = merge_by_weight(
+            {"s1": src1, "s2": src2},
+            {"s1": 0.4, "s2": 0.6},
+            ["date"],
+        )
+        assert round(result["price"].iloc[0], 1) == 106.0
+
+    def test_merge_by_weight_source_missing_column(self):
+        """按权重合并 - 某个源缺少目标列时跳过。"""
+        src1 = pd.DataFrame({"date": ["2024-01-01"], "price": [100]})
+        src2 = pd.DataFrame({"date": ["2024-01-01"], "price": [110]})
+        src3 = pd.DataFrame({"date": ["2024-01-01"], "other": [1]})
+        result = merge_by_weight(
+            {"s1": src1, "s2": src2, "s3": src3},
+            {"s1": 0.4, "s2": 0.6, "s3": 0.5},
+            ["date"],
+            ["price"],
+        )
+        assert "price" in result.columns
+
+    def test_merge_sources_new_column(self):
+        """按优先级合并 - 后续源引入新列。"""
+        src1 = pd.DataFrame({"date": ["2024-01-01"], "val": [100]})
+        src2 = pd.DataFrame({"date": ["2024-01-01"], "val2": [200]})
+        result = merge_sources(
+            {"s1": src1, "s2": src2},
+            ["date"],
+            ["s1", "s2"],
+        )
+        assert result["val"].iloc[0] == 100
+        assert result["val2"].iloc[0] == 200
+
 
 # ============================================================
 #  outlier_filter 测试
@@ -370,15 +498,15 @@ class TestOutlierFilter:
         """IQR 法检测异常值。"""
         data = [1, 2, 3, 4, 5, 100]
         mask = detect_outliers(data, method="iqr")
-        assert mask[-1] == True
-        assert mask[0] == False
+        assert mask[-1]
+        assert not mask[0]
 
     def test_detect_outliers_3sigma(self):
         """3σ 法检测异常值。"""
         np.random.seed(42)
         data = list(np.random.normal(0, 1, 1000)) + [10.0]
         mask = detect_outliers(data, method="3sigma")
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_detect_outliers_constant(self):
         """常量数据检测（无异常）。"""
@@ -427,8 +555,8 @@ class TestOutlierFilter:
         """检测异常值 - 含 NaN 数据。"""
         data = [1, 2, None, 4, 100]
         mask = detect_outliers(data, method="iqr")
-        assert mask[-1] == True
-        assert mask[2] == False
+        assert mask[-1]
+        assert not mask[2]
 
     def test_filter_outliers_3sigma_replace_mean(self):
         """3σ 法替换异常值为均值。"""
@@ -471,3 +599,33 @@ class TestOutlierFilter:
         df = pd.DataFrame({"val": [1, 2, 3, 4, 5, 100]})
         result = filter_outliers_iqr(df, "val", action="unknown")
         assert len(result) < len(df)
+
+    def test_detect_outliers_ndarray(self):
+        """检测异常值 - 传入 numpy ndarray。"""
+        data = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 100.0])
+        mask = detect_outliers(data, method="iqr")
+        assert mask[-1]
+
+    def test_filter_outliers_3sigma_remove(self):
+        """3σ 法移除异常值。"""
+        np.random.seed(42)
+        data = list(np.random.normal(0, 1, 1000)) + [10.0]
+        df = pd.DataFrame({"val": data})
+        result = filter_outliers_3sigma(df, "val", action="remove")
+        assert len(result) < len(df)
+
+    def test_filter_outliers_3sigma_replace_median(self):
+        """3σ 法替换异常值为中位数。"""
+        np.random.seed(42)
+        data = list(np.random.normal(0, 1, 1000)) + [10.0]
+        df = pd.DataFrame({"val": data})
+        result = filter_outliers_3sigma(
+            df, "val", action="replace", replace_value="median"
+        )
+        assert result["val"].iloc[-1] != 10.0
+
+    def test_filter_outliers_iqr_mark(self):
+        """IQR 法标记异常值。"""
+        df = pd.DataFrame({"val": [1, 2, 3, 4, 5, 100]})
+        result = filter_outliers_iqr(df, "val", action="mark")
+        assert "val_is_outlier" in result.columns

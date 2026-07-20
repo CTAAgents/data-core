@@ -7,6 +7,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from .base import DataCoreBaseTool
+from .schemas import AdjustmentSchema
 
 
 class DataCoreAdjustmentTool(DataCoreBaseTool):
@@ -24,6 +25,7 @@ class DataCoreAdjustmentTool(DataCoreBaseTool):
         "dividend_data (list, 可选) - 分红数据（股票复权用）；"
         "rollover_method (str, 可选) - 换月方法，'volume'/'open_interest'/'date'，默认 'volume'"
     )
+    args_schema = AdjustmentSchema
 
     def _run(self, data: list[dict[str, Any]], adjust_type: str,
              asset_type: Optional[str] = None,

@@ -6,6 +6,7 @@ from typing import Any
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import SentimentSchema
 
 
 class DataCoreSentimentTool(DataCoreBaseTool):
@@ -22,6 +23,7 @@ class DataCoreSentimentTool(DataCoreBaseTool):
         "limit (int, 可选) - 使用的新闻条数，默认 50；"
         "method (str, 可选) - 情绪计算方法，'llm'/'rule'/'auto'，默认 'auto'"
     )
+    args_schema = SentimentSchema
 
     def _run(self, symbol: str, limit: int = 50, method: str = "auto",
              **kwargs: Any) -> dict[str, Any]:

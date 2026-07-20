@@ -1,6 +1,8 @@
 """告警系统测试。"""
+
+from unittest.mock import patch
+
 import pytest
-import time
 
 
 class TestAlertModels:
@@ -34,6 +36,20 @@ class TestAlertNotifiers:
         content = log_file.read_text(encoding="utf-8")
         assert "test" in content
         assert "warning" in content
+
+    def test_base_notifier_not_implemented(self):
+        from datacore.alert import AlertNotifier, AlertEvent, AlertSeverity
+        notifier = AlertNotifier()
+        evt = AlertEvent(rule_name="test", severity=AlertSeverity.INFO, message="test")
+        with pytest.raises(NotImplementedError):
+            notifier.send(evt)
+
+    def test_webhook_notifier_failure(self):
+        from datacore.alert import WebhookNotifier, AlertEvent, AlertSeverity
+        notifier = WebhookNotifier("http://example.com/hook")
+        evt = AlertEvent(rule_name="test", severity=AlertSeverity.WARNING, message="webhook test", triggered_at=1000.0)
+        with patch("httpx.Client", side_effect=RuntimeError("connection failed")):
+            notifier.send(evt)  # 异常被捕获，不应抛出
 
 
 class TestAlertEngine:
@@ -96,7 +112,7 @@ class TestAlertEngine:
         assert len(active) == 0
 
     def test_get_active_alerts(self):
-        from datacore.alert import AlertEngine, AlertRule
+        from datacore.alert import AlertEngine
         engine = AlertEngine()
         assert engine.get_active_alerts() == []
 
@@ -121,6 +137,40 @@ class TestAlertEngine:
         engine = AlertEngine()
         engine.add_rule(AlertRule(name="gt_test", metric_key="api", metric_field="latency", operator="gt", threshold=5.0))
         events = engine.evaluate({"api": {"latency": 10.0}})
+        assert len(events) == 1
+
+    def test_operator_eq(self):
+        from datacore.alert import AlertEngine, AlertRule
+        engine = AlertEngine()
+        engine.add_rule(AlertRule(name="eq_test", metric_key="api", metric_field="latency", operator="eq", threshold=5.0))
+        events = engine.evaluate({"api": {"latency": 5.0}})
+        assert len(events) == 1
+
+    def test_evaluate_missing_metric_key(self):
+        from datacore.alert import AlertEngine, AlertRule
+        engine = AlertEngine()
+        engine.add_rule(AlertRule(name="missing_key", metric_key="api", metric_field="success_rate", operator="lt", threshold=90.0))
+        events = engine.evaluate({"other": {"success_rate": 50.0}})
+        assert len(events) == 0
+
+    def test_evaluate_missing_metric_field(self):
+        from datacore.alert import AlertEngine, AlertRule
+        engine = AlertEngine()
+        engine.add_rule(AlertRule(name="missing_field", metric_key="api", metric_field="success_rate", operator="lt", threshold=90.0))
+        events = engine.evaluate({"api": {"calls": 100}})
+        assert len(events) == 0
+
+    def test_notifier_send_exception_silenced(self):
+        from datacore.alert import AlertEngine, AlertRule, AlertNotifier, AlertEvent
+
+        class BrokenNotifier(AlertNotifier):
+            def send(self, event: AlertEvent) -> None:
+                raise RuntimeError("_notifier_boom")
+
+        engine = AlertEngine()
+        engine.add_rule(AlertRule(name="silent", metric_key="api", metric_field="success_rate", operator="lt", threshold=90.0))
+        engine.add_notifier(BrokenNotifier())
+        events = engine.evaluate({"api": {"success_rate": 50.0}})
         assert len(events) == 1
 
     def test_create_default_engine(self):

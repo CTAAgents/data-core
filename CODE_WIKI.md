@@ -1,7 +1,7 @@
 # Data-Core Code Wiki
 
-> 版本: v1.0.0 | AI-Native 量化数据基础设施
-> 更新: 2026-07-19
+> 版本: v2.4.0 | AI-Native 量化数据基础设施
+> 更新: 2026-07-20
 
 ---
 
@@ -101,6 +101,14 @@ dc.get("RB", DataType.OHLCV, period="monthly")               # 月线
 | v0.5.0 | 数据源完善（宏观/期货/A股扩展 + DuckDB缓存 + 多源降级链） |
 | v0.6.0 | LLM与智能加工（情绪端到端 + 基本面LLM加工 + 部署文档） |
 | v1.0.0 | 生产就绪（WebSocket实时行情 + 告警引擎 + 性能基准 + 安全审计） |
+| v1.1.0 | AsyncDataProvider 异步双接口 + F10 综合报告 + 共享基础设施 |
+| v1.2.0 | 技术指标模块（37+ TDX 公式）+ QMT/TqSdk/WebFallback 数据源 |
+| v1.3.0 | BaseTool 接口层（23 个 Tool，LangChain 兼容）+ 复权/换月引擎 + 周期转换引擎 + 数据清洗/校验 |
+| v2.0.0 | FDT 兼容层 + Qlib/RD-Agent 适配器 + 全面测试覆盖 |
+| v2.1.0 | API 层周期自动转换 + BaseTool Pydantic args_schema |
+| v2.2.0 | Prometheus 可观测性集成 + 技术指标边界补充测试 |
+| v2.3.0 | SymbolRegistry A 股自动识别修复 + 东方财富期货 secid 格式修复 |
+| v2.4.0 | Provider adjustment 参数支持 + 性能优化 |
 
 ---
 
@@ -190,11 +198,15 @@ data-core/
 ├── datacore/                      # 主包
 │   ├── __init__.py                # 包入口, 导出 UnifiedDataProvider
 │   ├── api.py                     # UnifiedDataProvider — 统一数据入口
+│   ├── api_async.py               # AsyncDataProvider — 异步数据入口 (v1.1.0)
+│   ├── api_f10.py                 # F10 综合报告入口 (v1.1.0)
 │   ├── cli.py                     # 命令行工具 (list/status/quote)
 │   ├── config.py                  # DataCoreConfig — 统一配置系统（单例）
 │   ├── breaker.py                 # Breaker — 带状态熔断器 (v0.4.0)
 │   ├── health.py                  # HealthChecker — 数据源健康检查 (v0.4.0)
 │   ├── metrics.py                 # MetricsCollector — 指标收集框架 (v0.4.0)
+│   ├── observability.py           # Prometheus 可观测性集成 (v2.2.0)
+│   ├── metrics_endpoint.py        # Prometheus 指标服务器 (v2.2.0)
 │   ├── alert.py                   # AlertEngine — 告警引擎 (v1.0.0)
 │   ├── stream.py                  # StreamQuote — WebSocket 实时行情 (v1.0.0)
 │   │
@@ -236,7 +248,10 @@ data-core/
 │   │       ├── tdx_lc.py          # TdxLcProvider — 通达信本地 (P0)
 │   │       ├── eastmoney.py       # EastMoneyFuturesProvider — 东方财富 (P1)
 │   │       ├── exchange_api.py    # ExchangeApiProvider — 交易所官方 API (P2, v0.5.0)
-│   │       └── shengyishe.py      # ShengYiSheProvider — 生意社现货/基差 (P3, v0.5.0)
+│   │       ├── shengyishe.py      # ShengYiSheProvider — 生意社现货/基差 (P3, v0.5.0)
+│   │       ├── qmt.py             # QmtProvider — QMT 数据源 (v1.2.0)
+│   │       ├── tqsdk.py           # TqSdkProvider — TqSdk 数据源 (v1.2.0)
+│   │       └── web_fallback.py    # WebFallbackProvider — 网页回退源 (v1.2.0)
 │   │
 │   ├── news/                      # 新闻资讯模块 (v0.2.0)
 │   │   ├── __init__.py
@@ -274,13 +289,60 @@ data-core/
 │   │       ├── sentiment_rule.py  # SentimentRuleStage — 词典法基线（零成本）
 │   │       ├── sentiment_llm.py   # SentimentLLMStage — LLM 打分（含降级）
 │   │       └── sentiment_aggregator.py  # SentimentAggregator — 情绪聚合器
+│   │
+│   ├── indicators/                # 技术指标模块 (v1.2.0)
+│   │   ├── __init__.py
+│   │   ├── base.py                # IndicatorBase 抽象基类
+│   │   ├── tdx_formula.py         # TDX 公式引擎 (37+ 指标)
+│   │   ├── numpy_engine.py        # NumPy 引擎
+│   │   └── talib_engine.py        # TA-Lib 引擎
+│   │
+│   ├── adjustment/                # 复权/换月引擎 (v1.3.0)
+│   │   ├── __init__.py
+│   │   ├── stock_adjustment.py    # A股复权 (qfq/hfq)
+│   │   └── futures_adjustment.py  # 期货换月 (continuous/continuous_qfq)
+│   │
+│   ├── resampler/                 # 周期转换引擎 (v1.3.0)
+│   │   ├── __init__.py
+│   │   └── resampler.py           # 跨周期重采样
+│   │
+│   ├── tools/                     # BaseTool 接口层 (v1.3.0)
+│   │   ├── __init__.py
+│   │   ├── base.py                # BaseTool 基类 (LangChain 兼容)
+│   │   ├── schemas.py             # Pydantic args_schema (v2.1.0)
+│   │   ├── quote_tool.py          # 行情查询工具
+│   │   ├── kline_tool.py          # K线查询工具
+│   │   ├── news_tool.py           # 新闻查询工具
+│   │   ├── macro_tool.py          # 宏观数据工具
+│   │   └── ...                    # 共 23 个 Tool
+│   │
+│   ├── cleaning/                  # 数据清洗/校验模块 (v1.3.0)
+│   │   ├── __init__.py
+│   │   ├── cleaners.py            # 数据清洗器
+│   │   └── validators.py          # 数据校验器
+│   │
+│   ├── qlib_adapter/              # Qlib/RD-Agent 适配器 (v2.0.0)
+│   │   ├── __init__.py
+│   │   ├── provider.py            # DataCoreQLibProvider
+│   │   ├── calendar.py            # CalendarProvider
+│   │   └── instrument.py          # InstrumentProvider
+│   │
+│   ├── fdc_compat/                # FDT 兼容层 (v2.0.0)
+│   │   ├── __init__.py
+│   │   └── fdc_compat.py          # FDC API 兼容
+│   │
+│   └── core/                      # 共享基础设施 (v1.1.0)
+│       ├── __init__.py
+│       └── shared_state.py        # 共享状态管理
 │
 ├── config/
 │   └── settings.yaml              # 配置文件（支持环境变量覆盖）
 │
-├── tests/                         # 测试目录 (26 个文件, 724+ 用例)
+├── tests/                         # 测试目录 (42 个文件, 1974+ 用例)
 │   ├── conftest.py                # 共享 Fixture 和 Mock 配置
 │   ├── test_api.py                # UnifiedDataProvider 路由测试
+│   ├── test_api_async.py          # AsyncDataProvider 测试 (v1.1.0)
+│   ├── test_api_f10.py            # F10 综合报告测试 (v1.1.0)
 │   ├── test_alert.py              # 告警引擎测试 (v1.0.0)
 │   ├── test_breaker.py            # 熔断器状态转换/超时/半开探测
 │   ├── test_cli.py                # 命令行工具测试
@@ -296,6 +358,7 @@ data-core/
 │   ├── test_macro.py              # 宏观数据模型测试
 │   ├── test_macro_mock.py         # 宏观数据源 Mock 测试 (v0.5.0)
 │   ├── test_metrics.py            # 指标收集框架测试
+│   ├── test_observability.py      # Prometheus 可观测性测试 (v2.2.0)
 │   ├── test_models.py             # 枚举/Payload/K线数据结构测试
 │   ├── test_national_bureau.py    # 国家统计局提供商测试 (v0.5.0)
 │   ├── test_news.py               # 新闻分类器 + 新闻模型测试
@@ -305,23 +368,36 @@ data-core/
 │   ├── test_registry.py           # 符号注册表测试
 │   ├── test_shengyishe.py         # 生意社提供商测试 (v0.5.0)
 │   ├── test_store.py              # 缓存测试
-│   └── test_stream.py             # WebSocket 实时行情测试 (v1.0.0)
+│   ├── test_stream.py             # WebSocket 实时行情测试 (v1.0.0)
+│   ├── test_indicators.py         # 技术指标模块测试 (v1.2.0)
+│   ├── test_adjustment.py         # 复权/换月引擎测试 (v1.3.0)
+│   ├── test_resampler.py          # 周期转换引擎测试 (v1.3.0)
+│   ├── test_tools.py              # BaseTool 接口层测试 (v1.3.0)
+│   ├── test_cleaning.py           # 数据清洗/校验测试 (v1.3.0)
+│   ├── test_qlib_adapter.py       # Qlib/RD-Agent 适配器测试 (v2.0.0)
+│   └── test_fdc_compat.py         # FDT 兼容层测试 (v2.0.0)
 │
 ├── docs/
-│   └── harness/                   # HARNESS 工程规范文档 (09 份)
-│       ├── 01-architecture.md     # 架构文档
-│       ├── 02-lifecycle.md        # 阶段定义
-│       ├── 03-configuration.md    # 配置项
-│       ├── 04-resilience.md       # 降级策略
-│       ├── 05-observability.md    # 可观测性
-│       ├── 06-testing.md          # 测试用例
-│       ├── 07-operations.md       # 版本历史
-│       ├── 08-gap-analysis.md     # 差距管理
-│       └── 09-advancement-plan.md # 晋级计划
+│   ├── archive/                   # 归档目录
+│   │   ├── ARCHITECTURE_v1.0.0.md
+│   │   └── DATA_CORE_ENHANCEMENT.md
+│   ├── harness/                   # HARNESS 工程规范文档 (09 份)
+│   │   ├── 01-architecture.md     # 架构文档
+│   │   ├── 02-lifecycle.md        # 阶段定义
+│   │   ├── 03-configuration.md    # 配置项
+│   │   ├── 04-resilience.md       # 降级策略
+│   │   ├── 05-observability.md    # 可观测性
+│   │   ├── 06-testing.md          # 测试用例
+│   │   ├── 07-operations.md       # 版本历史
+│   │   ├── 08-gap-analysis.md     # 差距管理
+│   │   └── 09-advancement-plan.md # 晋级计划
+│   ├── PRODUCTION_PLAN.md         # 生产就绪计划
+│   ├── DEPLOYMENT.md              # 部署指南
+│   ├── SECURITY_CHECKLIST.md      # 安全检查清单
+│   └── UNIFIED_DATA_HUB_PLAN.md   # 统一数据中枢升级方案
 │
 ├── pyproject.toml                 # 项目元数据与构建配置
 ├── CODE_WIKI.md                   # 项目说明书 (本文件，动态文档)
-├── ARCHITECTURE.md                # 架构设计文档
 ├── README.md                      # 项目 README
 ├── CLAUDE.md                      # AI 编码行为准则
 ├── .pylintrc                      # Pylint 配置
@@ -1695,38 +1771,48 @@ python -m pytest tests/ -m "not slow" -v
 
 ### 测试覆盖
 
-**总计: 26 个测试文件，724+ 测试用例，≥ 95% 覆盖率**
+**总计: 42 个测试文件，1974+ 测试用例，88% 覆盖率（核心模块接近 100%）**
 
 | 测试文件 | 用例数 | 覆盖模块 |
 |:---------|:-------|:---------|
 | `test_api.py` | 4 | UnifiedDataProvider 路由测试 |
-| `test_alert.py` | 20 | 告警引擎规则评估/通知 (v1.0.0) |
+| `test_api_async.py` | 28 | AsyncDataProvider 异步接口 (v1.1.0) |
+| `test_api_f10.py` | 28 | F10 综合报告 (v1.1.0) |
+| `test_alert.py` | 24 | 告警引擎规则评估/通知 (v1.0.0) |
 | `test_breaker.py` | 30 | 熔断器状态转换/超时/半开探测 |
-| `test_cli.py` | — | 命令行工具 |
-| `test_duckdb.py` | 18 | DuckDB 持久化缓存 (v0.5.0) |
+| `test_cli.py` | 8 | 命令行工具 |
+| `test_duckdb.py` | 12 | DuckDB 持久化缓存 (v0.5.0) |
 | `test_equity.py` | — | A 股 Provider 集成测试 |
 | `test_equity_mock.py` | 4 | TencentProvider Mock 测试 |
 | `test_exchange_api.py` | 8 | ExchangeAPI 提供商 (v0.5.0) |
 | `test_futures.py` | — | 期货 Provider 集成测试 |
 | `test_futures_mock.py` | 11 | TdxLcProvider Mock 测试 |
 | `test_futures_models.py` | 18 | 期货数据模型 |
-| `test_guosen.py` | 6 | 国信证券提供商 (v0.5.0) |
+| `test_guosen.py` | 7 | 国信证券提供商 (v0.5.0) |
 | `test_health.py` | 20 | 健康检查接口 |
 | `test_macro.py` | 3 | 宏观数据模型 |
-| `test_macro_mock.py` | 12 | 宏观数据源 Mock (v0.5.0) |
-| `test_metrics.py` | 30 | 指标收集框架 |
+| `test_macro_mock.py` | 28 | 宏观数据源 Mock (v0.5.0) |
+| `test_metrics.py` | 11 | 指标收集框架 |
+| `test_observability.py` | 19 | Prometheus 可观测性 (v2.2.0) |
 | `test_models.py` | 7 | 枚举/Payload/K线数据结构 |
 | `test_national_bureau.py` | 10 | 国家统计局提供商 (v0.5.0) |
-| `test_news.py` | 11 | 新闻分类器 + 新闻模型 |
+| `test_news.py` | 19 | 新闻分类器 + 新闻模型 |
 | `test_pboc.py` | 8 | 中国人民银行提供商 (v0.5.0) |
 | `test_processing.py` | 36 | 情绪管线 + 市场制度 |
-| `test_fundamental.py` | 10 | 基本面LLM加工 (v0.6.0) |
+| `test_fundamental.py` | 12 | 基本面LLM加工 (v0.6.0) |
 | `test_registry.py` | 5 | SymbolRegistry |
 | `test_shengyishe.py` | 8 | 生意社提供商 (v0.5.0) |
 | `test_store.py` | 5 | MemoryCache |
 | `test_stream.py` | 15 | WebSocket 实时行情 (v1.0.0) |
+| `test_indicators.py` | 90+78 | 技术指标模块 (v1.2.0) |
+| `test_adjustment.py` | 80 | 复权/换月引擎 (v1.3.0) |
+| `test_resampler.py` | 74 | 周期转换引擎 (v1.3.0) |
+| `test_tools.py` | 89 | BaseTool 接口层 (v1.3.0) |
+| `test_cleaning.py` | 58 | 数据清洗/校验 (v1.3.0) |
+| `test_qlib_adapter.py` | 99 | Qlib/RD-Agent 适配器 (v2.0.0) |
+| `test_fdc_compat.py` | 68 | FDT 兼容层 (v2.0.0) |
 
-**审计工具链**: pylint 10/10, mypy 0 错误(64 文件), ruff + flake8 0 错误
+**审计工具链**: pylint ≥ 9.50/10, mypy 0 错误(55 文件), ruff 0 错误
 
 ---
 
@@ -1740,6 +1826,7 @@ python -m pytest tests/ -m "not slow" -v
 | `pandas` | 2.0 | 数据处理 |
 | `httpx` | 0.25 | HTTP 客户端（数据源通信） |
 | `pyyaml` | 6.0 | YAML 配置文件解析 |
+| `pydantic` | 2.0 | 数据模型验证 + BaseTool args_schema (v2.1.0) |
 
 ### 可选依赖
 
@@ -1750,6 +1837,9 @@ python -m pytest tests/ -m "not slow" -v
 | `redis` | redis / full | Redis 客户端（热缓存共享） |
 | `beautifulsoup4` | full | HTML 解析（备用源数据提取） |
 | `websockets>=12.0` | stream / full | WebSocket 实时行情（v1.0.0） |
+| `prometheus_client` | full | Prometheus 指标暴露（v2.2.0） |
+| `ta-lib` | indicators / full | TA-Lib 技术指标计算（v1.2.0） |
+| `python-dateutil` | full | 日期时间处理 |
 
 ### 零依赖说明
 
@@ -1758,6 +1848,15 @@ Data-Core 刻意避免依赖以下常见金融数据包：
 - **tushare**: 同上
 - **任何 MCP Server**: 自包含设计，不依赖外部 Agent 运行时
 - **任何外部 Skill**: 无需 Agent 框架支持
+
+### 第三方框架兼容（v2.0.0+）
+
+| 框架 | 兼容模块 | 说明 |
+|------|---------|------|
+| **LangChain** | `tools/base.py`, `tools/schemas.py` | 23 个 Tool 全部兼容，支持 `args_schema` |
+| **Qlib** | `qlib_adapter/` | DataCoreQLibProvider 完整实现 |
+| **RD-Agent** | `qlib_adapter/` | Calendar/Instrument Provider 兼容 |
+| **FDT** | `fdc_compat/` | FDC API 兼容层 |
 
 ---
 
@@ -1858,9 +1957,18 @@ dc.get_health()
 
   --> {
     "status": "healthy" | "unavailable",
-    "version": "1.0.0",
+    "version": "2.4.0",
     "sources": { name: {available, latency_ms} },
     "timestamp": time.time()
   }
 ```
+
+---
+
+## 变更记录
+
+| 日期 | 版本 | 更新内容 |
+|:-----|:-----|:---------|
+| 2026-07-20 | v2.4.0 | 更新至 v2.4.0 实际状态，添加 v1.1.0~v2.4.0 版本演进，更新目录结构（新增 indicators/adjustment/resampler/tools/cleaning/qlib_adapter/fdc_compat/core 等模块），更新测试覆盖数据（42 文件/1974 用例），更新依赖关系（新增 pydantic/prometheus_client/ta-lib），添加第三方框架兼容表 |
+| 2026-07-19 | v1.0.0 | 初始版本，记录 v0.1.0~v1.0.0 的完整项目文档 |
 

@@ -112,7 +112,6 @@ class TestSentimentRuleStage:
 
     def test_negation(self):
         """否定词应该反转情绪。"""
-        stage = SentimentRuleStage()
         # "不上涨" 应该是负面
         result = SentimentRuleStage().process("价格未上涨")
         # 否定正面词 -> 负面

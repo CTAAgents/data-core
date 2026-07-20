@@ -17,7 +17,10 @@ class SymbolEntry:
 
 
 class SymbolRegistry:
-    """统一符号注册表。"""
+    """统一符号注册表。
+
+    期货品种通过显式注册识别；A 股/ETF/可转债通过代码前缀规则自动识别。
+    """
 
     def __init__(self):
         self._entries: dict[str, SymbolEntry] = {}
@@ -69,6 +72,31 @@ class SymbolRegistry:
         for sym, name, sector in futures:
             self.register(sym, name, MarketType.FUTURES, sector)
 
+    @staticmethod
+    def _guess_equity_market(symbol: str) -> Optional[MarketType]:
+        """根据代码前缀规则识别 A 股/ETF/可转债市场。
+
+        规则:
+            - 6 位纯数字: A 股股票（沪市 60/68、深市 00/30、北交所 8/4 开头）
+            - 510/511/512/513/515/516/588: 沪市 ETF
+            - 159: 深市 ETF
+            - 110/113/118/127/128/132/133: 可转债
+        """
+        s = symbol.strip()
+        if not s.isdigit() or len(s) != 6:
+            return None
+
+        # ETF 前缀
+        if s[:3] in ("510", "511", "512", "513", "515", "516", "588", "159"):
+            return MarketType.ETF
+        # 可转债前缀
+        if s[:3] in ("110", "113", "118", "127", "128", "132", "133"):
+            return MarketType.CB
+        # A 股股票前缀
+        if s[0] in ("6", "0", "3", "8", "4"):
+            return MarketType.STOCK
+        return None
+
     def register(self, symbol: str, name: str, market: MarketType,
                  sector: str = "", is_active: bool = True) -> SymbolEntry:
         entry = SymbolEntry(symbol, name, market, sector, is_active)
@@ -76,9 +104,19 @@ class SymbolRegistry:
         return entry
 
     def resolve(self, symbol: str) -> Optional[SymbolEntry]:
-        """解析符号，返回条目或 None。"""
+        """解析符号，返回条目或 None。
+
+        先查显式注册表（期货品种）；未命中则按 A 股代码规则自动识别。
+        """
         s = symbol.upper().strip()
-        return self._entries.get(s)
+        entry = self._entries.get(s)
+        if entry is not None:
+            return entry
+        # A 股/ETF/CB 自动识别
+        market = self._guess_equity_market(s)
+        if market is not None:
+            return SymbolEntry(symbol=s, name=s, market=market)
+        return None
 
     def resolve_market(self, symbol: str) -> Optional[MarketType]:
         """解析符号所属市场。"""

@@ -66,7 +66,7 @@ class WebSocketManager:
         if symbol not in self._subscribers:
             self._subscribers[symbol] = []
         self._subscribers[symbol].append(callback)
-        logger.info(f"订阅 {symbol} 成功，当前 {len(self._subscribers[symbol])} 个订阅者")
+        logger.info("订阅 %s 成功，当前 %d 个订阅者", symbol, len(self._subscribers[symbol]))
         return True
 
     def unsubscribe(self, symbol: str, callback: StreamCallback) -> bool:

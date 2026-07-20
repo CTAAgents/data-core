@@ -5,14 +5,13 @@
 """
 from __future__ import annotations
 
-import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from datacore.futures import FuturesDataProvider
 from datacore.futures.providers import TdxLcProvider, EastMoneyFuturesProvider, FuturesDataSource
-from datacore.models.enums import DataType, MarketType, SourceGrade
+from datacore.models.enums import DataType, SourceGrade
 from datacore.models.futures import (
     BasisData,
     ContractChain,
@@ -24,7 +23,6 @@ from datacore.models.futures import (
     WarehouseReceiptData,
 )
 from datacore.models.ohlcv import KBar, KlineData, QuoteData
-from datacore.models.payload import DataPayload
 
 
 # ============================================================

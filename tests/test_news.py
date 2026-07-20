@@ -558,9 +558,9 @@ class TestNewsDataProvider:
     @pytest.fixture
     def provider_with_mocks(self):
         """创建一个 NewsDataProvider，内部 sources 被替换为 mock。"""
-        with patch("datacore.news.providers.cls.ClsProvider") as mock_cls, \
-             patch("datacore.news.providers.wallstreet_cn.WallStreetCnProvider") as mock_wall, \
-             patch("datacore.news.providers.eastmoney_research.EastMoneyResearchProvider") as mock_em:
+        with patch("datacore.news.providers.cls.ClsProvider"), \
+             patch("datacore.news.providers.wallstreet_cn.WallStreetCnProvider"), \
+             patch("datacore.news.providers.eastmoney_research.EastMoneyResearchProvider"):
             provider = NewsDataProvider()
         # 替换为 mock sources
         mock_src0 = MagicMock()
@@ -585,17 +585,17 @@ class TestNewsDataProvider:
 
     def test_init_sources_loads_all_providers(self):
         """_init_sources 加载所有 3 个数据源。"""
-        with patch("datacore.news.providers.cls.ClsProvider") as mock_cls, \
-             patch("datacore.news.providers.wallstreet_cn.WallStreetCnProvider") as mock_wall, \
-             patch("datacore.news.providers.eastmoney_research.EastMoneyResearchProvider") as mock_em:
+        with patch("datacore.news.providers.cls.ClsProvider"), \
+             patch("datacore.news.providers.wallstreet_cn.WallStreetCnProvider"), \
+             patch("datacore.news.providers.eastmoney_research.EastMoneyResearchProvider"):
             provider = NewsDataProvider()
         assert len(provider.sources) == 3
 
     def test_init_sources_handles_partial_failure(self):
         """部分数据源构造失败时不影响其余。"""
-        with patch("datacore.news.providers.cls.ClsProvider") as mock_cls, \
-             patch("datacore.news.providers.wallstreet_cn.WallStreetCnProvider", side_effect=Exception("fail")) as mock_wall, \
-             patch("datacore.news.providers.eastmoney_research.EastMoneyResearchProvider") as mock_em:
+        with patch("datacore.news.providers.cls.ClsProvider"), \
+             patch("datacore.news.providers.wallstreet_cn.WallStreetCnProvider", side_effect=Exception("fail")), \
+             patch("datacore.news.providers.eastmoney_research.EastMoneyResearchProvider"):
             provider = NewsDataProvider()
         assert len(provider.sources) == 2
 

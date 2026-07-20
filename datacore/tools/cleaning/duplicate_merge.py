@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from ..base import DataCoreBaseTool
+from ..schemas import DuplicateMergeSchema
 
 
 class DuplicateMergeTool(DataCoreBaseTool):
@@ -23,6 +24,7 @@ class DuplicateMergeTool(DataCoreBaseTool):
         "strategy (str, 可选) - 合并策略，'first'/'last'/'mean'/'max'/'min'/'concat'，默认 'first'；"
         "keep_source (bool, 可选) - 是否保留来源信息，默认 False"
     )
+    args_schema = DuplicateMergeSchema
 
     def _run(self, data: list[dict[str, Any]], keys: list[str],
              strategy: str = "first", keep_source: bool = False,

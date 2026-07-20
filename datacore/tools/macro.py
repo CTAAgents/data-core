@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import MacroSchema
 
 
 class DataCoreMacroTool(DataCoreBaseTool):
@@ -24,6 +25,7 @@ class DataCoreMacroTool(DataCoreBaseTool):
         "end_date (str, 可选) - 结束日期；"
         "limit (int, 可选) - 返回数据条数，默认 100"
     )
+    args_schema = MacroSchema
 
     def _run(self, indicator: Optional[str] = None, category: Optional[str] = None,
              frequency: Optional[str] = None, start_date: Optional[str] = None,
@@ -33,7 +35,7 @@ class DataCoreMacroTool(DataCoreBaseTool):
         from ..models.enums import DataType
 
         provider = UnifiedDataProvider()
-        params = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
         if indicator:
             params["indicator"] = indicator
         if category:

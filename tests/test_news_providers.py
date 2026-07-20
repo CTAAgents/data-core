@@ -1,7 +1,6 @@
 """新闻数据源的 mock 测试。
 覆盖正常路径、异常路径、边界情况。
 """
-import pytest
 
 
 class TestClsProvider:

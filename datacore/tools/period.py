@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .base import DataCoreBaseTool
+from .schemas import PeriodSchema
 
 
 class DataCorePeriodTool(DataCoreBaseTool):
@@ -23,6 +24,7 @@ class DataCorePeriodTool(DataCoreBaseTool):
         "source_period (str, 可选) - 源周期，默认自动推断；"
         "include_volume (bool, 可选) - 是否包含成交量，默认 True"
     )
+    args_schema = PeriodSchema
 
     def _run(self, data: list[dict[str, Any]], target_period: str,
              source_period: str = "", include_volume: bool = True,

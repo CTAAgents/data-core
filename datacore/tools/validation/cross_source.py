@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..base import DataCoreBaseTool
+from ..schemas import CrossSourceVerifySchema
 
 
 class CrossSourceVerifyTool(DataCoreBaseTool):
@@ -26,8 +27,9 @@ class CrossSourceVerifyTool(DataCoreBaseTool):
         "tolerance (float, 可选) - 容差阈值，默认 0.01 (1%)；"
         "method (str, 可选) - 对比方法，'diff'/'pct_diff'/'correlation'，默认 'pct_diff'"
     )
+    args_schema = CrossSourceVerifySchema
 
-    def _run(self, source_data: dict[str, list[dict[str, Any]]], field: str,
+    def _run(self, source_data: dict[str, list[dict[str, Any]]], field: str,  # pylint: disable=arguments-differ
              key_field: str = "datetime", tolerance: float = 0.01,
              method: str = "pct_diff", **kwargs: Any) -> dict[str, Any]:
         try:

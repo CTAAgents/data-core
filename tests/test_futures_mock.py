@@ -1,4 +1,3 @@
-import pytest
 from datacore.futures.providers.tdx_lc import TdxLcProvider
 from datacore.models.enums import DataType
 

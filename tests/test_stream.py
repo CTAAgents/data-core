@@ -1,6 +1,4 @@
 """WebSocket 实时行情测试。"""
-import pytest
-from unittest.mock import MagicMock
 
 
 class TestStreamQuote:

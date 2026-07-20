@@ -1,6 +1,6 @@
 # Data-Core Testing
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.4.0 | Updated: 2026-07-20
 
 ## Test Files
 
@@ -27,28 +27,88 @@ Version: v2.0.0 | Updated: 2026-07-20
 | `tests/test_sentiment_llm.py` | 15 | **LLM 情绪打分端到端测试（v0.6.0 新增）** |
 | `tests/test_fundamental_llm.py` | 12 | **基本面 LLM 加工测试（v0.6.0 新增）** |
 | `tests/test_stream.py` | 15 | **WebSocket 连接/重连/订阅测试（v1.0.0 新增）** |
-| `tests/test_alert.py` | 18 | **告警引擎规则/渠道测试（v1.0.0 新增）** |
+| `tests/test_alert.py` | 24 | **告警引擎规则/渠道测试（v1.0.0 新增）** |
 | `tests/benchmark_test.py` | 8 | **性能基准测试（v1.0.0 新增）** |
 | `tests/test_phase1.py` | 28 | **Phase 1 综合测试（v1.1.0 新增）** |
 | `tests/test_indicators.py` | 90 | **技术指标模块测试（v1.2.0 新增）** |
+| `tests/test_indicators_extra.py` | 78 | **技术指标模块边界补充测试（v2.2.0 补充）** |
 | `tests/test_futures_new_providers.py` | 20 | **新期货数据源测试（v1.2.0 新增）** |
 | `tests/test_tools.py` | 89 | **BaseTool 接口层测试（v1.3.0 新增）** |
 | `tests/test_adjustment.py` | 80 | **复权/换月引擎测试（v1.3.0 新增）** |
-| `tests/test_resampler.py` | 69 | **周期转换引擎测试（v1.3.0 新增）** |
+| `tests/test_resampler.py` | 74 | **周期转换引擎测试（v1.3.0 新增）** |
 | `tests/test_issue.py` | 34 | **消费者反馈通道测试（v1.3.0 新增）** |
 | `tests/test_cleaning.py` | 31 | **数据清洗模块测试（v1.3.0 新增）** |
 | `tests/test_validation.py` | 27 | **数据校验模块测试（v1.3.0 新增）** |
 | `tests/test_collectors.py` | 18 | **采集模块骨架测试（v1.3.0 新增）** |
 | `tests/test_operations.py` | 19 | **运维工具模块测试（v1.3.0 新增）** |
-| `tests/test_fdc_compat.py` | 98 | **FDT 兼容层测试（v2.0.0 新增）** |
+| `tests/test_fdc_compat.py` | 68 | **FDT 兼容层测试（v2.0.0 新增）** |
 | `tests/test_qlib_adapter.py` | 99 | **Qlib/RD-Agent 适配器测试（v2.0.0 新增）** |
-| `tests/test_equity.py` | 10 | 股票数据模块（v0.6.0 补充） |
+| `tests/test_observability.py` | 19 | **Prometheus 可观测性测试（v2.2.0 新增）** |
+| `tests/test_adjustment_provider.py` | 10 | **Provider adjustment 参数测试（v2.4.0 新增）** |
+| `tests/test_equity.py` | 76 | 股票数据模块（v0.6.0 补充） |
 | `tests/test_futures.py` | 18 | 期货数据模块 |
 | `tests/test_cli.py` | 8 | CLI 命令行工具 |
 
-**总计: 39 个测试文件，1418 个测试用例**
+**总计: 42 个测试文件，1974 个测试用例**
 
-> 注：部分测试文件（如 test_equity.py, test_futures.py, test_cli.py）可能包含更多用例，实际总数可能超过 1418。
+> 注：本次覆盖补充将 `tests/test_fdc_compat.py` 与 `tests/test_equity.py` 的用例数修正为实际收集值，并新增 21 个用例（fdc_compat +16，equity_provider +5）。
+>
+> 本次覆盖补充为 `tests/test_resampler.py` 新增 5 个用例，`tests/test_alert.py` 新增 6 个用例，覆盖 ohlcv.py 与 alert.py 的剩余未覆盖分支。
+
+## v2.2.0 新增测试
+
+v2.2.0 新增 `tests/test_observability.py`，覆盖 Prometheus 可观测性模块的三件套：observability.py 核心指标 + metrics_endpoint.py HTTP 端点 + metrics.py 的 _format_prometheus() 方法。
+
+| 测试类 | 用例数 | 说明 |
+|:-------|:-------|:-----|
+| TestObservability | 11 | Counter/Gauge/Histogram 三种指标类型 + generate_text() exposition format + observe_api_call/observe_tool_call 装饰器（mock provider/tool）+ record_resampler_operation/update_issues_open/update_source_availability 辅助函数 |
+| TestMetricsEndpoint | 5 | generate_metrics() 返回字符串/非空 + start_metrics_server 启动后可访问 /metrics + /healthz 返回 200 + 服务器可正常停止（幂等 stop） |
+| TestPrometheusFormat | 3 | _format_prometheus() 输出包含 HELP/TYPE 注释 + 指标名以 datacore_ 开头 + 标签 {key="value"} 格式 |
+
+**新增 19 个测试用例，总计 1437 个测试用例**
+
+### v2.2.0 技术指标边界补充测试
+
+补充 `tests/test_indicators_extra.py`，重点覆盖 `datacore/indicators/` 四个文件的边界分支、数据不足场景与未覆盖函数：
+
+| 测试类 | 用例数 | 覆盖文件 |
+|:-------|:-------|:---------|
+| TestTdxCompatExtra | 22 | `datacore/indicators/tdx_compat.py` |
+| TestCoreExtra | 35 | `datacore/indicators/core.py` |
+| TestInitExtra | 13 | `datacore/indicators/__init__.py` |
+| TestLegacyExtra | 8 | `datacore/indicators/legacy_numpy.py` |
+
+**新增 78 个测试用例，总计 1515 个测试用例**
+
+#### 技术指标补充测试覆盖原则
+- TDX 对齐实现边界：空输入、周期非法、数据不足、价格=flat 等分支
+- NumPy core 边界：`_shift`/`_rolling_window` 非法参数、各指标非法参数/数据不足返回全 NaN
+- 统一入口路由：`use_tdx=True` 时缺少 high/low/volume 的降级路径、TA-Lib 兜底成功/异常分支
+- 旧版兼容实现：数据不足场景与 `old_atr` 基本路径
+- 剩余不可覆盖行说明：`__init__.py` 204/241 为当前指标映射下不可达的防御性 `return None`；core.py 152-155 与 tdx_compat.py 45/81-86 受 coverage 与 NumPy 2.2.6 `_NoValueType` 交互问题影响，普通 pytest 运行可正常覆盖
+
+### v2.2.0 测试覆盖原则
+- Counter/Gauge/Histogram 三种指标类型全覆盖（基本操作 + 标签维度）
+- observe_api_call / observe_tool_call 装饰器使用 mock provider / mock tool 验证真实逻辑（不 mock 整个 observability 模块）
+- generate_text() / generate_metrics() 输出格式符合 Prometheus exposition format 标准（HELP/TYPE 注释、指标名前缀、标签格式）
+- HTTP 端点（/metrics、/healthz）使用 urllib.request 实际访问验证（端口 19090 避免冲突）
+- 服务器资源清理（try/finally + stop 幂等）
+- prometheus_client 可选依赖降级路径覆盖（HAS_PROMETHEUS_CLIENT 分支）
+
+## v2.1.0 测试说明
+
+v2.1.0 新增功能（API 层周期自动转换 + BaseTool args_schema）通过既有测试覆盖，测试总数保持 1418 个不变。
+
+| 新增功能 | 覆盖方式 | 说明 |
+|:---------|:---------|:-----|
+| API 层周期自动转换 | test_resampler.py（69 个） + test_api.py | 复用 resampler 模块全量测试，API 层通过既有 api 测试覆盖 |
+| BaseTool args_schema | test_tools.py（89 个） | 23 个 Tool 全覆盖，args_schema 作为可选能力集成测试 |
+
+**测试覆盖原则**:
+- API 层周期转换复用 resampler 模块的 69 个测试用例（全周期 + OHLCV 聚合 + auto 模式）
+- args_schema 作为 Tool 的可选属性，集成在 23 个 Tool 的 89 个测试中
+- pydantic 未安装时的降级路径通过既有 LangChain 兼容测试覆盖
+- 测试总数保持 1418 个，无新增测试文件
 
 ## v2.0.0 新增测试
 
@@ -199,7 +259,7 @@ python -m pytest tests/benchmark_test.py -v --benchmark
 | pylint | ≥ 9.50/10 | ✅ 达标 |
 | mypy | 0 错误 | ✅ 达标 |
 | ruff | 0 错误 | ✅ 达标 |
-| 覆盖率 | ≥ 88% | ✅ 达标（v2.0.0: 88%，核心模块接近 100%） |
+| 覆盖率 | ≥ 88% | ✅ 达标（v2.2.0: 88%，核心模块接近 100%） |
 
 ## 测试覆盖原则
 
@@ -235,3 +295,6 @@ python -m pytest tests/benchmark_test.py -v --benchmark
 30. **FDT 兼容层测试**: FDC 函数签名 + 数据格式 + 错误码兼容必须全覆盖（v2.0.0 新增）
 31. **Qlib 适配器测试**: Qlib DataProvider 完整接口 + 表达式引擎 + 格式转换必须全覆盖（v2.0.0 新增）
 32. **终验标准**: 1418 测试全部通过，88% 覆盖率（核心模块接近 100%），ruff 零错误（v2.0.0 新增）
+33. **API 层周期转换测试**: 复用 resampler 全量测试 + API 层集成测试，自动重采样 + 失败降级 + meta 记录必须覆盖（v2.1.0 新增）
+34. **BaseTool args_schema 测试**: 23 个 Tool 的 args_schema + pydantic 可选依赖降级路径必须覆盖（v2.1.0 新增）
+35. **Prometheus 可观测性测试**: Counter/Gauge/Histogram 三种指标类型 + 11 个标准指标 + observe_api_call/observe_tool_call 装饰器 + generate_metrics() exposition format + HTTP 端点（/metrics、/healthz、/）+ 线程安全 + prometheus_client 可选依赖降级必须全覆盖（v2.2.0 新增）

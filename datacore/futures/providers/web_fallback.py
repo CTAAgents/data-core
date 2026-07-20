@@ -73,14 +73,8 @@ class WebFallbackProvider(FuturesDataSource):
             return None
 
     def fetch_term_structure(self, symbol: str) -> Optional[TermStructure]:
-        try:
-            return None
-        except Exception:
-            return None
+        return None
 
     def fetch_spread(self, symbol: str, near_contract: str, far_contract: str,
                      period: str = "daily", days: int = 120) -> Optional[SpreadData]:
-        try:
-            return None
-        except Exception:
-            return None
+        return None

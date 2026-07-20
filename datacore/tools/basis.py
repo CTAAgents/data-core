@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import BasisSchema
 
 
 class DataCoreBasisTool(DataCoreBaseTool):
@@ -21,6 +22,7 @@ class DataCoreBasisTool(DataCoreBaseTool):
         "spot_price (float, 可选) - 现货价格，不传则使用内置现货数据；"
         "basis_type (str, 可选) - 基差类型，'absolute'/'ratio'/'both'，默认 'both'"
     )
+    args_schema = BasisSchema
 
     def _run(self, symbol: str, spot_price: Optional[float] = None,
              basis_type: str = "both", **kwargs: Any) -> dict[str, Any]:
@@ -28,7 +30,7 @@ class DataCoreBasisTool(DataCoreBaseTool):
         from ..models.enums import DataType
 
         provider = UnifiedDataProvider()
-        params = {"basis_type": basis_type}
+        params: dict[str, Any] = {"basis_type": basis_type}
         if spot_price is not None:
             params["spot_price"] = spot_price
 

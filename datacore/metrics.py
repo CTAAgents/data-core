@@ -61,6 +61,59 @@ class MetricsCollector:
     def reset(self) -> None:
         self._metrics.clear()
 
+    def _format_prometheus(self) -> str:
+        """输出 Prometheus exposition format 文本。
+
+        将内部统计指标转换为标准 Prometheus 文本格式，便于
+        Prometheus 服务抓取。指标命名遵循 datacore_<name> 规范。
+
+        Returns:
+            Prometheus exposition format 字符串
+        """
+        snap = self.snapshot()
+        if not snap:
+            return ""
+
+        lines: list[str] = []
+
+        # Counter: 总调用次数
+        lines.append("# HELP datacore_calls_total Total calls by endpoint")
+        lines.append("# TYPE datacore_calls_total counter")
+        for key in sorted(snap.keys()):
+            entry = snap[key]
+            lines.append(
+                f'datacore_calls_total{{endpoint="{key}"}} {entry["calls"]}'
+            )
+
+        # Counter: 失败次数
+        lines.append("# HELP datacore_failures_total Total failures by endpoint")
+        lines.append("# TYPE datacore_failures_total counter")
+        for key in sorted(snap.keys()):
+            entry = snap[key]
+            lines.append(
+                f'datacore_failures_total{{endpoint="{key}"}} {entry["failures"]}'
+            )
+
+        # Gauge: 成功率
+        lines.append("# HELP datacore_success_rate Success rate by endpoint (percent)")
+        lines.append("# TYPE datacore_success_rate gauge")
+        for key in sorted(snap.keys()):
+            entry = snap[key]
+            lines.append(
+                f'datacore_success_rate{{endpoint="{key}"}} {entry["success_rate"]}'
+            )
+
+        # Gauge: 平均延迟（秒）
+        lines.append("# HELP datacore_avg_duration_seconds Average duration in seconds")
+        lines.append("# TYPE datacore_avg_duration_seconds gauge")
+        for key in sorted(snap.keys()):
+            entry = snap[key]
+            lines.append(
+                f'datacore_avg_duration_seconds{{endpoint="{key}"}} {entry["avg_duration"]}'
+            )
+
+        return "\n".join(lines) + "\n"
+
 
 _metrics_instance: Optional[MetricsCollector] = None
 

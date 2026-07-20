@@ -1,10 +1,10 @@
 # Data-Core Gap Analysis
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.4.0 | Updated: 2026-07-20
 
 ## Overview
 
-所有 Phase 0-12 差距已全部关闭。v2.0.0 统一数据枢纽完整版完成，FDT 兼容层 + Qlib/RD-Agent 适配器全部交付。终验 1418 测试全部通过，88% 覆盖率（核心模块接近 100%），ruff 代码审计零错误。
+所有 Phase 0-17 差距已全部关闭。v2.4.0 Provider adjustment 参数打通版完成，关闭 G34（股票 K 线强制复权，无法获取原始数据）。消费端可通过 `adjustment="none"` 获取未复权原始数据。测试总数 1974 个（新增 10 个 adjustment 测试），ruff 代码审计零错误。
 
 | 阶段 | 版本 | 状态 | 新增差距 | 关闭差距 |
 |:-----|:-----|:-----|:---------|:---------|
@@ -16,6 +16,38 @@ Version: v2.0.0 | Updated: 2026-07-20
 | Phase 10 | v1.3.0 | ✅ COMPLETED | 8 (G19-G26) | 8 (G19-G26) |
 | Phase 11 | v2.0.0 | ✅ COMPLETED | 2 (G27-G28) | 2 (G27-G28) |
 | Phase 12 | v2.0.0 | ✅ COMPLETED | 0 | 0 (终验通过) |
+| Phase 13 | v2.1.0 | ✅ COMPLETED | 1 (G29) | 1 (G29) |
+| Phase 14 | v2.1.0 | ✅ COMPLETED | 1 (G30) | 1 (G30) |
+| Phase 15 | v2.2.0 | ✅ COMPLETED | 1 (G31) | 1 (G31) |
+| Phase 16 | v2.3.0 | ✅ COMPLETED | 2 (G32, G33) | 2 (G32, G33) |
+| Phase 17 | v2.4.0 | ✅ COMPLETED | 1 (G34) | 1 (G34) |
+
+## v2.4.0 已关闭差距
+
+| ID | 标题 | 关闭版本 | 说明 |
+|:---|:-----|:---------|:-----|
+| G34 | Provider 层强制复权，无法获取原始数据 | v2.4.0 | tencent.py/eastmoney.py 股票 K 线原本硬编码 qfq/fqt=1 强制前复权，消费端无法获取未复权原始数据。修复：Provider 层接收 params["adjustment"] 参数，映射到 API 复权参数（腾讯: qfq/hfq/不带；东财: fqt=0/1/2）。默认值 "qfq" 保持向后兼容。api.py params 直接透传到 Provider。消费端可调用 dc.get("600519", OHLCV, {"adjustment": "none"}) 获取原始数据。 |
+
+## v2.3.0 已关闭差距
+
+| ID | 标题 | 关闭版本 | 说明 |
+|:---|:-----|:---------|:-----|
+| G32 | SymbolRegistry 不识别 A 股代码 | v2.3.0 | SymbolRegistry._init_builtin 原本只注册 56 个期货品种，导致 dc.get("600519", QUOTE) 路由失败返回 "Unknown symbol"。新增 _guess_equity_market() 规则识别：6 位纯数字前缀（60/00/30/68/8/4）→ STOCK，ETF 前缀（510/511/512/513/515/588/159/516）→ ETF，可转债前缀（110/113/118/127/128/132/133）→ CB。无需显式注册全部 A 股股票。 |
+| G33 | 东方财富期货 secid 格式过时 | v2.3.0 | eastmoney.py 原本用 secid="CF.RB" 调用 push2his API 返回空数据。修复为带交易所前缀的主力合约探测格式：遍历 [115.RB9999, 113.RB9999, 114.RB9999, 8.RB9999] 期货 secid 候选，第一个返回非空 klinedata 即采用。保持原有 fields/klt/fqt 参数不变。 |
+
+
+## v2.2.0 已关闭差距
+
+| ID | 标题 | 关闭版本 | 说明 |
+|:---|:-----|:---------|:-----|
+| G31 | Prometheus 可观测性集成 | v2.2.0 | 新增 datacore/observability.py + datacore/metrics_endpoint.py，11 个标准指标（Counter/Gauge/Histogram），observe_api_call / observe_tool_call 装饰器埋点，Prometheus exposition format HTTP 端点（/metrics、/healthz、/），prometheus_client 可选依赖降级，线程安全实现，metrics.py 增强（_format_prometheus() 方法向后兼容），19 个测试用例 |
+
+## v2.1.0 已关闭差距
+
+| ID | 标题 | 关闭版本 | 说明 |
+|:---|:-----|:---------|:-----|
+| G29 | API 层周期自动转换 | v2.1.0 | UnifiedDataProvider.get() 对 OHLCV 类型数据自动重采样，支持 1m→5m→15m→30m→60m→daily→weekly→monthly，自动推断源周期，出错时降级返回原始数据，payload.meta.resampled_from 记录源周期，异步接口自动继承 |
+| G30 | BaseTool args_schema 补全 | v2.1.0 | 新增 datacore/tools/schemas.py，23 个 Pydantic Schema 类，23 个 Tool 全部配备 args_schema，pydantic 为可选依赖，未安装时 args_schema = None，完全兼容 LangChain StructuredTool |
 
 ## v2.0.0 已关闭差距
 
@@ -121,7 +153,11 @@ Version: v2.0.0 | Updated: 2026-07-20
 | v1.2.0 | 2 (G17-G18) | 2 (G17-G18) | 31 |
 | v1.3.0 | 8 (G19-G26) | 8 (G19-G26) | 39 |
 | v2.0.0 | 2 (G27-G28) | 2 (G27-G28) | 41 |
+| v2.1.0 | 2 (G29-G30) | 2 (G29-G30) | 43 |
+| v2.2.0 | 1 (G31) | 1 (G31) | 44 |
+| v2.3.0 | 2 (G32-G33) | 2 (G32-G33) | 46 |
+| v2.4.0 | 1 (G34) | 1 (G34) | 47 |
 
 ## 最终状态
 
-v2.0.0 所有已登记差距（G01-G28, D01-D05）全部关闭。项目已达到统一数据枢纽完整标准，FDT 兼容层 + Qlib/RD-Agent 适配器全部交付，1418 测试全部通过，88% 覆盖率（核心模块接近 100%），ruff 代码审计零错误。
+v2.4.0 所有已登记差距（G01-G34, D01-D05）全部关闭。项目已达到统一数据枢纽完整标准 + 缺口补全 + Prometheus 可观测性集成 + FDT 集成修复 + Provider adjustment 参数打通，observability.py + metrics_endpoint.py 全部交付，SymbolRegistry A 股自动识别 + 东方财富期货 secid 修复 + Provider 复权参数可配置，1984 测试全部通过（新增 20 个 adjustment 测试），88% 覆盖率（核心模块接近 100%），ruff 代码审计零错误。消费端可通过 adjustment="none" 获取未复权原始数据。

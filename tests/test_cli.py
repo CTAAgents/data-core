@@ -209,7 +209,8 @@ class TestMain:
 
     def test_main_entry_point(self):
         """覆盖 if __name__ == '__main__' 入口 — 通过 subprocess 执行。"""
-        import subprocess, sys
+        import subprocess
+        import sys
         result = subprocess.run(
             [sys.executable, "-m", "datacore.cli"],
             capture_output=True, text=True, cwd="d:\\Programs\\data-core",

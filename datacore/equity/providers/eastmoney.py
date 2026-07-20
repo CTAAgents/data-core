@@ -28,7 +28,18 @@ class EastMoneyEquityProvider(EquityDataSource):
         params = params or {}
         period = params.get("period", "daily")
         days = int(params.get("days", 400))
+        adjustment = params.get("adjustment", "qfq").lower()  # qfq/hfq/none
+
         secid = f"1.{symbol}" if symbol.startswith(("6", "5", "11", "50")) else f"0.{symbol}"
+
+        # 映射 adjustment 到 API 参数：fqt=1/2/0
+        # fqt=1: 前复权, fqt=2: 后复权, fqt=0: 不复权
+        fqt = 1  # 默认前复权
+        if adjustment == "hfq":
+            fqt = 2
+        elif adjustment == "none":
+            fqt = 0
+
         try:
             with httpx.Client(timeout=10) as c:
                 resp = c.get(
@@ -38,25 +49,29 @@ class EastMoneyEquityProvider(EquityDataSource):
                         "fields1": "f1,f2,f3,f4,f5,f6",
                         "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
                         "klt": 101 if period == "daily" else 60,
-                        "fqt": 1, "end": "20500101", "lmt": days,
+                        "fqt": fqt, "end": "20500101", "lmt": days,
                     },
                 )
                 data = resp.json().get("data", {})
-                klinedata = data.get("klinedata", []) if data else []
+                klines = data.get("klines", []) if data else []
         except Exception:
             return None
-        if not klinedata:
+        if not klines:
             return None
         bars = []
-        for k in klinedata:
+        for line in klines:
             try:
+                parts = line.split(",")
+                if len(parts) < 7:
+                    continue
+                # EastMoney kline 字段顺序: date, open, close, high, low, volume, amount
                 bars.append(KBar(
-                    date=str(k["f51"]), open=float(k["f52"]),
-                    close=float(k["f55"]), high=float(k["f53"]),
-                    low=float(k["f54"]), volume=float(k["f56"]),
-                    amount=float(k["f57"]),
+                    date=str(parts[0]), open=float(parts[1]),
+                    close=float(parts[2]), high=float(parts[3]),
+                    low=float(parts[4]), volume=float(parts[5]),
+                    amount=float(parts[6]),
                 ))
-            except (KeyError, TypeError, ValueError):
+            except (ValueError, TypeError, IndexError):
                 continue
         kd = KlineData(symbol=symbol, period=period, bars=bars, source=self.name)
         return DataPayload(

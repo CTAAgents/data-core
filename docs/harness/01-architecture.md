@@ -1,6 +1,6 @@
 # Data-Core Architecture
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.2.0 | Updated: 2026-07-20
 
 ## 1. System Positioning
 
@@ -25,6 +25,12 @@ Data-Core is responsible for data collection and processing (including LLM-based
 **v1.3.0 边界更新**: 新增 BaseTool 接口层（23 个 Tool，兼容 LangChain 协议）、复权/换月引擎、周期转换引擎、消费者反馈通道、数据清洗模块、数据校验模块、采集模块骨架、运维工具模块。v2.0 之前最大版本，测试总数 1221 个。
 
 **v2.0.0 边界更新**: 新增 FDT 兼容层（fdc_compat.py，提供 FDC 兼容的函数签名）、Qlib/RD-Agent 适配器（qlib_adapter/provider.py）。统一数据枢纽完整版，测试总数 1418 个，覆盖率 88%（核心模块接近 100%），ruff 代码审计零错误。
+
+**v2.1.0 边界更新**: API 层周期自动转换（UnifiedDataProvider.get() 对 OHLCV 自动重采样）、BaseTool args_schema 补全（23 个 Pydantic Schema 类）。测试总数仍为 1418 个（新增功能通过既有测试覆盖），ruff 代码审计零错误。
+
+**v2.2.0 边界更新**: 新增 Prometheus 可观测性集成（datacore/observability.py + datacore/metrics_endpoint.py），11 个标准指标（Counter/Gauge/Histogram），observe_api_call / observe_tool_call 装饰器埋点，Prometheus exposition format 端点（/metrics、/healthz、/）。API/Provider/Tool 层全面埋点，prometheus_client 可选依赖。测试总数 1437 个（新增 19 个 observability 测试），ruff 代码审计零错误。
+
+**v2.3.0 边界更新**: 修复 SymbolRegistry 不识别 A 股代码的 Bug（G32）+ 修复东方财富期货 secid 格式过时导致 K 线返回空数据的 Bug（G33）。SymbolRegistry 新增 A 股/ETF 自动识别规则（6 位数字→STOCK，510/511/512/513/515/588 前缀→ETF），无需显式注册即可路由。eastmoney.py 期货 secid 改为带交易所前缀的合约探测格式。FDT 切换到 Data-Core 数据源可正常使用。
 
 ## 2. Layered Architecture
 
@@ -52,8 +58,9 @@ UnifiedDataProvider (api.py)
   │   ├── trend_maturity.py      # 趋势成熟度评估
   │   ├── talib_wrapper.py       # TA-Lib 封装兜底
   │   └── __init__.py            # 导出 compute_indicators / INDICATOR_NAMES / assess_trend_maturity
-  ├── tools/            # BaseTool 接口层（v1.3.0 新增，核心交付）
+  ├── tools/            # BaseTool 接口层（v1.3.0 新增，v2.1.0 增强，核心交付）
   │   ├── base.py                # DataCoreBaseTool 基类（兼容 LangChain 协议）
+  │   ├── schemas.py             # 23 个 Pydantic Schema 类（v2.1.0 新增，args_schema）
   │   ├── ohlcv.py               # OHLCV 数据工具
   │   ├── quote.py               # Quote 行情工具
   │   ├── sentiment.py           # Sentiment 情绪工具
@@ -160,12 +167,17 @@ UnifiedDataProvider (api.py)
   │   └── stream.py             # StreamQuote + WebSocketManager
   ├── alert/            # 告警引擎（v1.0.0 新增）
   │   └── alert.py              # AlertEngine + 预置规则 + 3 通知渠道
+  ├── observability.py  # Prometheus 可观测性模块（v2.2.0 新增）
+  │   └── Counter/Gauge/Histogram 自定义实现 + 11 个标准指标 + observe_api_call/observe_tool_call 装饰器 + 线程安全
+  ├── metrics_endpoint.py # Prometheus HTTP 端点（v2.2.0 新增）
+  │   └── generate_metrics() 生成 exposition format + start_metrics_server(port=9090) + /metrics、/healthz、/ 端点 + daemon 线程 + 优雅关闭
   ├── store/            # 存储层（缓存+持久化）
   │   ├── cache.py               # MemoryCache 内存缓存
   │   └── duckdb.py              # DuckDB 持久化（v0.4.0 新增加密存读，v0.5.0 接入缓存层）
   ├── models/           # 数据模型与枚举
   │   └── enums.py               # DataType/MarketType/SourceGrade
-  ├── registry/         # 品种注册表
+  ├── registry/         # 品种注册表（v2.3.0 增强：A 股代码自动识别）
+  │   └── symbol_registry.py     # SymbolRegistry — 期货显式注册 + A 股/ETF 按规则自动识别
   └── config.py         # 统一配置系统
 
 # 数据持久化流（v0.4.0）
@@ -190,6 +202,27 @@ WebSocketManager → 行情订阅 → 数据回调 → 告警引擎
 AlertEngine → 规则匹配 → 渠道分发
   - 预置规则：价格突破/波动率异常/数据延迟/熔断触发
   - 通知渠道：日志记录 / 文件写入 / Webhook 回调
+
+# API 层周期自动转换数据流（v2.1.0）
+UnifiedDataProvider.get(OHLCV) → 数据源返回 → 周期检查 → 自动重采样 → 返回结果
+  - 请求周期 > 源周期：调用 resampler 自动转换（1m→5m→15m→30m→60m→daily→weekly→monthly）
+  - 请求周期 ≤ 源周期：直接返回原始数据，不做转换
+  - 自动推断源周期：根据返回数据的时间间隔自动检测
+  - 转换失败降级：出错时降级返回原始数据，在 errors 中记录失败原因
+  - meta 记录：payload.meta.resampled_from 记录源周期
+  - 异步继承：AsyncDataProvider 自动继承周期转换能力
+
+# Prometheus 可观测性数据流（v2.2.0）
+API/Provider/Tool 调用 → observe_api_call/observe_tool_call 装饰器 → observability.py 指标更新
+  → Counter: api_requests_total / api_errors_total / tool_invocations_total / tool_errors_total
+  → Gauge: source_availability / issues_open
+  → Histogram: api_request_duration_seconds（延迟分布）
+  → metrics_endpoint.py generate_metrics() → Prometheus exposition format
+  → HTTP 服务器（/metrics、/healthz、/）→ Prometheus 抓取
+  - prometheus_client 可选：未安装时使用自定义 Counter/Gauge/Histogram 实现
+  - 线程安全：所有指标更新加锁
+  - daemon 线程：HTTP 服务器在 daemon 线程运行，主进程退出时自动结束
+  - 优雅关闭：stop_metrics_server() 关闭 HTTP 服务器
 ```
 
 ## 3. DataType 体系（v0.4.0 更新）
@@ -209,7 +242,128 @@ AlertEngine → 规则匹配 → 渠道分发
 - `ETF_NAV`, `ETF_PREMIUM`, `ETF_FUND_FLOW`
 - `CB_CONVERSION`, `CB_TERMS`, `CB_PURE_BOND`
 
-## 4. v2.0.0 新增组件
+## 4. v2.1.0 新增组件
+
+| 组件 | 文件 | 说明 |
+|:-----|:-----|:-----|
+| API 层周期自动转换 | datacore/api.py | UnifiedDataProvider.get() 对 OHLCV 类型数据自动重采样 |
+| BaseTool args_schema | datacore/tools/schemas.py | 23 个 Pydantic Schema 类，完全兼容 LangChain StructuredTool |
+
+## 4. v2.2.0 新增组件
+
+| 组件 | 文件 | 说明 |
+|:-----|:-----|:-----|
+| Prometheus 可观测性模块 | datacore/observability.py | Counter/Gauge/Histogram 自定义实现 + 11 个标准指标 + observe_api_call/observe_tool_call 装饰器 + 线程安全 |
+| Prometheus HTTP 端点 | datacore/metrics_endpoint.py | generate_metrics() 生成 exposition format + start_metrics_server(port=9090) + /metrics、/healthz、/ 端点 |
+| metrics.py 增强 | datacore/metrics.py | 新增 _format_prometheus() 方法，保留 MetricsCollector 向后兼容 |
+| API 层埋点 | datacore/api.py | UnifiedDataProvider.get() 添加 observe_api_call 装饰器 |
+| Tool 层埋点 | datacore/tools/base.py | DataCoreBaseTool.invoke() 添加 observe_tool_call 装饰器 |
+| Issue 埋点 | datacore/issue.py | report() 完成后更新 issues_open gauge |
+| Resampler 埋点 | datacore/resampler/ohlcv.py | resample_ohlcv() 完成后递增 resampler_operations counter |
+| 可观测性测试 | tests/test_observability.py | 19 个测试用例（Counter/Gauge/Histogram + 装饰器 + 端点 + 线程安全） |
+
+### Prometheus 可观测性模块（v2.2.0）
+
+```
+observability.py
+  ├── 自定义指标实现（prometheus_client 可选）
+  │   ├── Counter                # 单调递增计数器（api_requests_total 等）
+  │   ├── Gauge                  # 可增减仪表（source_availability / issues_open）
+  │   └── Histogram              # 延迟分布（api_request_duration_seconds）
+  ├── 11 个标准指标
+  │   ├── api_requests_total        # API 请求总数（Counter）
+  │   ├── api_request_duration_seconds  # API 请求延迟（Histogram）
+  │   ├── api_errors_total          # API 错误总数（Counter）
+  │   ├── source_degradations_total # 数据源降级总次数（Counter）
+  │   ├── source_availability      # 数据源可用性（Gauge，0.0~1.0）
+  │   ├── cache_hits_total         # 缓存命中次数（Counter）
+  │   ├── cache_misses_total       # 缓存未命中次数（Counter）
+  │   ├── resampler_operations_total # 周期转换操作总数（Counter）
+  │   ├── issues_open              # 当前未解决问题数（Gauge）
+  │   ├── tool_invocations_total   # Tool 调用总数（Counter）
+  │   └── tool_errors_total         # Tool 错误总数（Counter）
+  ├── 装饰器
+  │   ├── observe_api_call(func)   # API 层装饰器：计数 + 延迟 + 错误
+  │   └── observe_tool_call(func) # Tool 层装饰器：计数 + 延迟 + 错误
+  └── 线程安全
+      └── threading.Lock 保护所有指标更新
+```
+
+### Prometheus HTTP 端点（v2.2.0）
+
+```
+metrics_endpoint.py
+  ├── generate_metrics()          # 生成 Prometheus exposition format 文本
+  ├── start_metrics_server(port=9090)
+  │   ├── /metrics               # Prometheus 抓取端点（exposition format）
+  │   ├── /healthz               # 健康检查端点（返回 {"status": "ok"}）
+  │   ├── /                      # 根路径（返回服务信息）
+  │   ├── daemon 线程运行         # 不阻塞主进程
+  │   └── 优雅关闭               # stop_metrics_server() 关闭
+  └── stop_metrics_server()      # 关闭 HTTP 服务器
+```
+
+**特性**:
+- prometheus_client 为可选依赖，未安装时使用自定义实现
+- 11 个标准指标覆盖 API/Provider/Tool/Cache/Source/Issue/Resampler 全链路
+- 装饰器埋点侵入性最小（仅 2 个装饰器覆盖 API 和 Tool 层）
+- HTTP 端点支持 /metrics、/healthz、/ 三个路径
+- daemon 线程运行，主进程退出时自动结束
+- 线程安全，所有指标更新加锁
+
+### API 层周期自动转换（v2.1.0）
+
+```
+UnifiedDataProvider.get(OHLCV)
+  ├── 周期检查
+  │   ├── 请求周期 > 源周期 → 触发自动重采样
+  │   └── 请求周期 ≤ 源周期 → 直接返回
+  ├── 源周期自动推断
+  │   └── 根据返回数据的时间间隔自动检测
+  ├── resampler 调用
+  │   └── 复用 resampler/ 周期转换引擎
+  ├── 失败降级
+  │   └── 转换失败时返回原始数据，errors 记录原因
+  └── meta 记录
+      └── payload.meta.resampled_from = 源周期
+```
+
+**特性**:
+- 支持周期：1m, 5m, 15m, 30m, 60m, daily, weekly, monthly
+- 自动推断源周期，无需用户指定
+- 出错时降级返回原始数据，保证数据可用性
+- 在 payload.meta 中记录 resampled_from 源周期
+- 异步接口（AsyncDataProvider）自动继承
+
+### BaseTool args_schema 补全（v2.1.0）
+
+```
+tools/schemas.py
+  ├── 23 个 Pydantic BaseModel 类
+  │   ├── OhlcvToolSchema / QuoteToolSchema
+  │   ├── SentimentToolSchema / HealthToolSchema
+  │   ├── ListSymbolsToolSchema / MacroToolSchema
+  │   ├── FundamentalToolSchema / F10ToolSchema
+  │   ├── IndicatorsToolSchema / TermStructureToolSchema
+  │   ├── BasisToolSchema / MarketRegimeToolSchema
+  │   ├── NewsToolSchema / AdjustmentToolSchema
+  │   ├── PeriodToolSchema / UnitUnifyToolSchema
+  │   ├── DateAlignToolSchema / DuplicateMergeToolSchema
+  │   ├── OutlierFilterToolSchema / CrossSourceVerifyToolSchema
+  │   ├── MissingDetectToolSchema / CalMathComputeToolSchema
+  │   └── ConfigReadToolSchema
+  └── 可选依赖设计
+      ├── pydantic 已安装 → args_schema = Pydantic Model
+      └── pydantic 未安装 → args_schema = None，不影响使用
+```
+
+**特性**:
+- 23 个 Tool 全部配备 args_schema（Pydantic BaseModel）
+- pydantic 为可选依赖，未安装时自动降级
+- 完全兼容 LangChain StructuredTool
+- 类型安全的参数校验
+
+## 5. v2.0.0 新增组件
 
 | 组件 | 文件 | 说明 |
 |:-----|:-----|:-----|

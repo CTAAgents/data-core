@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datacore"
-version = "2.0.0"
+version = "2.4.0"
 description = "Data-Core: AI-Native 量化数据基础设施"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,3 +37,37 @@ datacore = "datacore.cli:main"
 markers = [
     "benchmark: 性能基准测试标记",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = false
+warn_unused_configs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+ignore_missing_imports = true
+follow_imports = "skip"
+exclude = [
+    ".*/tests/.*",
+    ".*/scripts/.*",
+]
+no_implicit_reexport = false
+
+[[tool.mypy.overrides]]
+module = [
+    "talib",
+    "tqsdk",
+    "xtquant",
+    "pdfplumber",
+    "PyPDF2",
+    "tavily",
+    "httpx",
+    "bs4",
+    "duckdb",
+    "redis",
+    "psycopg2",
+    "pydantic",
+    "langchain.*",
+    "openai",
+]
+ignore_missing_imports = true

@@ -1,6 +1,5 @@
 """新增期货数据源测试 — QMT / TqSdk / WebFallback。"""
 from unittest.mock import patch, MagicMock
-import pytest
 
 
 class TestQMTProvider:

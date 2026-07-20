@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..base import DataCoreBaseTool
+from ..schemas import OutlierFilterSchema
 
 
 class OutlierFilterTool(DataCoreBaseTool):
@@ -26,8 +27,9 @@ class OutlierFilterTool(DataCoreBaseTool):
         "action (str, 可选) - 处理方式，'remove'/'replace'/'mark'，默认 'mark'；"
         "replace_value (str/float, 可选) - 替换值，'mean'/'median'/数值，默认 'median'"
     )
+    args_schema = OutlierFilterSchema
 
-    def _run(self, data: list[dict[str, Any]], field: str,
+    def _run(self, data: list[dict[str, Any]], field: str,  # pylint: disable=arguments-differ,too-many-positional-arguments,too-many-arguments
              method: str = "iqr", threshold: float | None = None,
              action: str = "mark", replace_value: Any = "median",
              **kwargs: Any) -> dict[str, Any]:

@@ -10,6 +10,8 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Type
 
+from ..observability import observe_tool_call
+
 try:
     import pydantic  # noqa: F401
     HAS_PYDANTIC = True
@@ -64,6 +66,7 @@ class DataCoreBaseTool(ABC):
         """
         return await asyncio.to_thread(self._run, *args, **kwargs)
 
+    @observe_tool_call
     def invoke(self, input: dict[str, Any] | None = None,
                config: Any = None, **kwargs: Any) -> dict[str, Any]:
         """LangChain 兼容的调用接口。

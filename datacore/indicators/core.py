@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, Callable
 
 
 # ============================================================
@@ -1144,7 +1145,7 @@ def stoch(high: np.ndarray, low: np.ndarray, close: np.ndarray,
 #  指标注册
 # ============================================================
 
-INDICATOR_MAP: dict[str, callable] = {
+INDICATOR_MAP: dict[str, Callable[..., Any]] = {
     "MA": ma,
     "EMA": ema,
     "SMA": sma,

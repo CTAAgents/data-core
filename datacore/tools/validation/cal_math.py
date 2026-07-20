@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..base import DataCoreBaseTool
+from ..schemas import CalMathComputeSchema
 
 
 class CalMathComputeTool(DataCoreBaseTool):
@@ -25,8 +26,9 @@ class CalMathComputeTool(DataCoreBaseTool):
         "fields (list, 可选) - 涉及的字段列表；"
         "params (dict, 可选) - 额外参数"
     )
+    args_schema = CalMathComputeSchema
 
-    def _run(self, data: list[dict[str, Any]], operation: str,
+    def _run(self, data: list[dict[str, Any]], operation: str,  # pylint: disable=arguments-differ
              fields: list[str] | None = None,
              params: dict[str, Any] | None = None,
              **kwargs: Any) -> dict[str, Any]:

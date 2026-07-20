@@ -6,6 +6,7 @@ from typing import Any
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import FundamentalSchema
 
 
 class DataCoreFundamentalTool(DataCoreBaseTool):
@@ -22,6 +23,7 @@ class DataCoreFundamentalTool(DataCoreBaseTool):
         "period (str, 可选) - 报告期，'annual'/'quarterly'，默认 'quarterly'；"
         "limit (int, 可选) - 返回期数，默认 10"
     )
+    args_schema = FundamentalSchema
 
     def _run(self, symbol: str, report_type: str = "indicator",
              period: str = "quarterly", limit: int = 10,

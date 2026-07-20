@@ -70,9 +70,6 @@ class AsyncDataProvider:
 
         Aggregates multiple data types into a single payload.
         """
-        from .models.enums import DataType
-        from .models.payload import DataPayload
-
         tasks = {
             "term_structure": self.get(symbol, DataType.FUTURES_TERM_STRUCTURE),
             "spread": self.get(symbol, DataType.FUTURES_SPREAD),

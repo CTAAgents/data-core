@@ -1,4 +1,3 @@
-import pytest
 from datacore.registry.symbol_registry import SymbolRegistry
 from datacore.models.enums import MarketType
 

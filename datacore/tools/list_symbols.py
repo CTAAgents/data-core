@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .base import DataCoreBaseTool
+from .schemas import ListSymbolsSchema
 
 
 class DataCoreListSymbolsTool(DataCoreBaseTool):
@@ -20,6 +21,7 @@ class DataCoreListSymbolsTool(DataCoreBaseTool):
         "sector (str, 可选) - 板块名称，如 '黑色系'、'能源链' 等；"
         "active_only (bool, 可选) - 仅返回活跃品种，默认 True"
     )
+    args_schema = ListSymbolsSchema
 
     def _run(self, market: Optional[str] = None, sector: Optional[str] = None,
              active_only: bool = True, **kwargs: Any) -> dict[str, Any]:

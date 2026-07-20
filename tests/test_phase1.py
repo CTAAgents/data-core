@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 import pytest
@@ -167,7 +166,7 @@ class TestAsyncDataProvider:
         assert "status" in health
         assert "sources" in health
         assert "version" in health
-        assert health["version"] == "2.0.0"
+        assert health["version"] == "2.3.0"
 
     @pytest.mark.asyncio
     async def test_get_f10(self):

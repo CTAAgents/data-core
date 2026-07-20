@@ -39,6 +39,14 @@ def _get_provider() -> AsyncDataProvider:
 
 def _kline_payload_to_list(payload: Any) -> list[dict]:
     data = payload.data
+    # KlineData → dict 列表（对齐 FDT KlineBar 字段 + data_source）
+    if hasattr(data, "bars"):
+        import dataclasses
+        result = [dataclasses.asdict(b) for b in data.bars]
+        _source = getattr(payload, "source", "") or getattr(data, "source", "")
+        for r in result:
+            r["data_source"] = _source
+        return result
     if hasattr(data, "to_dict"):
         data = data.to_dict()
     elif hasattr(data, "tolist"):
@@ -100,41 +108,55 @@ async def get_kline(
     return _kline_payload_to_list(payload)
 
 
-async def get_quote(symbol: str) -> dict:
+async def get_quote(symbol: str) -> Any:
     """兼容 FDC 的 get_quote 接口。
 
     Args:
         symbol: 品种代码
 
     Returns:
-        实时行情字典，包含最新价、涨跌额、涨跌幅等
+        QuoteData 对象（含 to_dict() 方法，与 FDT 格式严格对齐）
     """
+    import dataclasses
+    from datacore.models.ohlcv import QuoteData
+
     provider = _get_provider()
     payload = await provider.get(symbol, DataType.QUOTE)
-    data = _payload_to_data(payload)
+    data = payload.data
+    # 缓存反序列化后可能是 dict，重建为 QuoteData（只保留有效字段，补充 symbol）
     if isinstance(data, dict):
-        return data
-    return {"symbol": symbol, "data": data}
+        valid_keys = {f.name for f in dataclasses.fields(QuoteData)}
+        filtered = {k: v for k, v in data.items() if k in valid_keys}
+        if "symbol" not in filtered:
+            filtered["symbol"] = payload.symbol
+        data = QuoteData(**filtered)
+    return data
 
 
-async def batch_get_quotes(symbols: list[str]) -> dict[str, dict]:
+async def batch_get_quotes(symbols: list[str]) -> dict[str, Any]:
     """批量获取行情。
 
     Args:
         symbols: 品种代码列表
 
     Returns:
-        以品种代码为 key 的行情字典
+        以品种代码为 key 的 QuoteData 对象字典
     """
+    import dataclasses
+    from datacore.models.ohlcv import QuoteData
+
     provider = _get_provider()
     results = await provider.get_batch(symbols, DataType.QUOTE)
-    output: dict[str, dict] = {}
+    output: dict[str, Any] = {}
+    valid_keys = {f.name for f in dataclasses.fields(QuoteData)}
     for sym, payload in results.items():
-        data = _payload_to_data(payload)
+        data = payload.data
         if isinstance(data, dict):
-            output[sym] = data
-        else:
-            output[sym] = {"symbol": sym, "data": data}
+            filtered = {k: v for k, v in data.items() if k in valid_keys}
+            if "symbol" not in filtered:
+                filtered["symbol"] = payload.symbol
+            data = QuoteData(**filtered)
+        output[sym] = data
     return output
 
 

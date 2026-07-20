@@ -1,7 +1,6 @@
-import pytest
 from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
-from datacore.models.ohlcv import KBar, KlineData, QuoteData
+from datacore.models.ohlcv import KBar, KlineData
 
 class TestEnums:
     def test_data_type_values(self):

@@ -202,6 +202,11 @@ def _payload_to_dataframe(
     if data is None:
         return None
 
+    # QuoteData 是单条快照，不适合转 DataFrame
+    from datacore.models.ohlcv import QuoteData
+    if isinstance(data, QuoteData):
+        return None
+
     if isinstance(data, pd.DataFrame):
         df = data.copy()
     elif hasattr(data, "to_dict"):

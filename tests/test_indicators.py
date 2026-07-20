@@ -28,17 +28,16 @@ from datacore.indicators.core import (
     obv, vr,
     dmi, brar, cr, keltner, chandelier,
     median_price, typical_price, weighted_close, avg_price, trange,
-    adx, stddev, variance,
+    stddev, variance,
     linear_regression, linear_reg_slope, tsf, ultimate_osc,
     INDICATOR_MAP,
 )
 from datacore.indicators.tdx_compat import (
-    tdx_ma, tdx_kdj, tdx_macd, tdx_rsi, tdx_boll, tdx_atr,
-    tdx_dmi, tdx_obv, tdx_wr, tdx_cci,
+    tdx_ma, tdx_kdj, tdx_macd, tdx_rsi, tdx_atr,
     TDX_INDICATOR_MAP,
 )
 from datacore.indicators.legacy_numpy import (
-    old_ma, old_ema, old_rsi, old_macd, old_kdj, old_boll, old_atr,
+    old_ma, old_ema, old_rsi, old_macd, old_kdj, old_boll,
 )
 from datacore.indicators.talib_wrapper import is_talib_available
 

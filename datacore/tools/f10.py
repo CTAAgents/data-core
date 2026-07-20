@@ -6,6 +6,7 @@ from typing import Any
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import F10Schema
 
 
 class DataCoreF10Tool(DataCoreBaseTool):
@@ -21,6 +22,7 @@ class DataCoreF10Tool(DataCoreBaseTool):
         "参数：symbol (str, 必需) - 品种代码；"
         "modules (list, 可选) - 指定包含的模块，默认全部，可选: term_structure, spread, basis, warehouse_receipt, position_rank, fundamental"
     )
+    args_schema = F10Schema
 
     def _run(self, symbol: str, modules: list[str] | None = None,
              **kwargs: Any) -> dict[str, Any]:

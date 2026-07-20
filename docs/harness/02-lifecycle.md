@@ -1,6 +1,6 @@
 # Data-Core Lifecycle
 
-Version: v2.0.0 | Updated: 2026-07-20
+Version: v2.2.0 | Updated: 2026-07-20
 
 ## Module Phases
 
@@ -19,6 +19,11 @@ Version: v2.0.0 | Updated: 2026-07-20
 | Phase 11 | v2.0.0 | FDT compatibility layer | COMPLETED | FDC 兼容层（fdc_compat.py），提供 FDC 兼容的函数签名 |
 | Phase 12 | v2.0.0 | Qlib/RD-Agent adapter | COMPLETED | Qlib/RD-Agent 适配器（qlib_adapter/provider.py） |
 | Phase 0 (Final) | v2.0.0 | Final acceptance | COMPLETED | 1418 测试全部通过，88% 覆盖率，ruff 零错误 |
+| Phase 13 | v2.1.0 | API layer auto resample | COMPLETED | API 层周期自动转换（UnifiedDataProvider.get() OHLCV 自动重采样） |
+| Phase 14 | v2.1.0 | BaseTool args_schema | COMPLETED | BaseTool args_schema 补全（23 个 Pydantic Schema 类） |
+| Phase 0 (v2.1) | v2.1.0 | v2.1 acceptance | COMPLETED | 测试总数 1418 个（新增功能通过既有测试覆盖），ruff 零错误 |
+| Phase 15 | v2.2.0 | Prometheus observability | COMPLETED | Prometheus 可观测性集成（observability.py + metrics_endpoint.py + 11 个标准指标 + 装饰器埋点） |
+| Phase 0 (v2.2) | v2.2.0 | v2.2 acceptance | COMPLETED | 测试总数 1437 个（新增 19 个 observability 测试），ruff 零错误 |
 
 ## v0.5.0 数据源完善版
 
@@ -124,6 +129,92 @@ v1.0.0 聚焦生产就绪：WebSocket 实时行情、告警系统、性能基准
 - ✅ 3 个新测试文件，41 个新测试用例
 - ✅ 代码覆盖率 ≥ 95%
 - ✅ pylint ≥ 9.50/10, mypy: 0 错误, ruff: 0 错误
+
+## v2.2.0 Prometheus 可观测性集成版
+
+v2.2.0 聚焦 Prometheus 可观测性集成：新增 observability.py 与 metrics_endpoint.py 模块，11 个标准指标（Counter/Gauge/Histogram），observe_api_call / observe_tool_call 装饰器埋点，Prometheus exposition format HTTP 端点。测试总数 1437 个（新增 19 个 observability 测试），ruff 代码审计零错误。
+
+### v2.2.0 新增模块
+- `datacore/observability.py` — Prometheus 可观测性模块（Counter/Gauge/Histogram 自定义实现 + 11 个标准指标 + observe_api_call/observe_tool_call 装饰器 + 线程安全）
+- `datacore/metrics_endpoint.py` — Prometheus HTTP 端点（generate_metrics() + start_metrics_server(port=9090) + /metrics、/healthz、/ 端点 + daemon 线程 + 优雅关闭）
+
+### v2.2.0 增强模块
+- `datacore/api.py` — UnifiedDataProvider.get() 添加 observe_api_call 装饰器
+- `datacore/tools/base.py` — DataCoreBaseTool.invoke() 添加 observe_tool_call 装饰器
+- `datacore/issue.py` — report() 完成后更新 issues_open gauge
+- `datacore/resampler/ohlcv.py` — resample_ohlcv() 完成后递增 resampler_operations counter
+- `datacore/metrics.py` — 新增 _format_prometheus() 方法，保留 MetricsCollector 向后兼容
+- `datacore/__init__.py` — 版本号 2.1.0 → 2.2.0
+
+### v2.2.0 新增测试
+| 测试文件 | 用例数 | 说明 |
+|:---------|:-------|:-----|
+| `tests/test_observability.py` | 19 | Prometheus 可观测性测试（Counter/Gauge/Histogram + 装饰器 + 端点 + 线程安全） |
+
+**新增 19 个测试用例，总计 1437 个测试用例**
+
+### v2.2.0 产出物清单
+
+- ✅ Prometheus 可观测性模块（datacore/observability.py）
+- ✅ Counter/Gauge/Histogram 自定义实现（prometheus_client 可选依赖）
+- ✅ 11 个标准指标（api_requests_total / api_request_duration_seconds / api_errors_total / source_degradations_total / source_availability / cache_hits_total / cache_misses_total / resampler_operations_total / issues_open / tool_invocations_total / tool_errors_total）
+- ✅ observe_api_call 装饰器（API 层埋点）
+- ✅ observe_tool_call 装饰器（Tool 层埋点）
+- ✅ 线程安全实现（threading.Lock 保护所有指标更新）
+- ✅ Prometheus HTTP 端点模块（datacore/metrics_endpoint.py）
+- ✅ generate_metrics() 生成 Prometheus exposition format
+- ✅ start_metrics_server(port=9090) 启动 HTTP 服务器
+- ✅ 支持 /metrics、/healthz、/ 三个端点
+- ✅ daemon 线程运行，支持优雅关闭
+- ✅ API 层埋点（UnifiedDataProvider.get() 添加 observe_api_call 装饰器）
+- ✅ Tool 层埋点（DataCoreBaseTool.invoke() 添加 observe_tool_call 装饰器）
+- ✅ Issue 埋点（report() 完成后更新 issues_open gauge）
+- ✅ Resampler 埋点（resample_ohlcv() 完成后递增 resampler_operations counter）
+- ✅ metrics.py 增强（新增 _format_prometheus() 方法，保留 MetricsCollector 向后兼容）
+- ✅ 版本号从 2.1.0 升级到 2.2.0
+- ✅ 1 个新测试文件，19 个新测试用例
+- ✅ 测试总数 1437 个（1418 + 19）
+- ✅ ruff 代码审计零错误
+
+## v2.1.0 缺口补全版
+
+v2.1.0 聚焦两个缺口补全：API 层周期自动转换（UnifiedDataProvider.get() 对 OHLCV 自动重采样）、BaseTool args_schema 补全（23 个 Pydantic Schema 类）。测试总数仍为 1418 个（新增功能通过既有测试覆盖），ruff 代码审计零错误。
+
+### v2.1.0 新增模块
+- `datacore/tools/schemas.py` — 23 个 Pydantic Schema 类，BaseTool args_schema 补全
+
+### v2.1.0 增强模块
+- `datacore/api.py` — UnifiedDataProvider.get() 新增 OHLCV 自动重采样逻辑
+- `datacore/api_async.py` — AsyncDataProvider 自动继承周期转换能力
+- `datacore/tools/base.py` — DataCoreBaseTool 集成 args_schema（可选 pydantic 依赖）
+- `datacore/tools/` — 23 个 Tool 全部配备 args_schema
+- `datacore/__init__.py` — 版本号 2.0.0 → 2.1.0
+
+### v2.1.0 测试说明
+v2.1.0 新增功能通过既有测试覆盖，无新增测试文件，测试总数保持 1418 个不变。
+
+| 新增功能 | 覆盖方式 | 既有测试用例数 |
+|:---------|:---------|:--------------|
+| API 层周期自动转换 | test_resampler.py + test_api.py | 69 + 4 = 73 |
+| BaseTool args_schema | test_tools.py | 89 |
+
+**测试总数保持 1418 个，新增功能通过既有测试覆盖**
+
+### v2.1.0 产出物清单
+
+- ✅ API 层周期自动转换（UnifiedDataProvider.get() OHLCV 自动重采样）
+- ✅ 支持周期：1m, 5m, 15m, 30m, 60m, daily, weekly, monthly
+- ✅ 自动推断源周期，出错时降级返回原始数据
+- ✅ payload.meta.resampled_from 记录源周期
+- ✅ 异步接口（AsyncDataProvider）自动继承
+- ✅ 新增 datacore/tools/schemas.py，23 个 Pydantic Schema 类
+- ✅ 23 个 Tool 全部配备 args_schema（Pydantic BaseModel）
+- ✅ pydantic 为可选依赖，未安装时 args_schema = None，不影响使用
+- ✅ 完全兼容 LangChain StructuredTool
+- ✅ 版本号从 2.0.0 升级到 2.1.0
+- ✅ 测试总数 1418 个（新增功能通过既有测试覆盖）
+- ✅ ruff 代码审计零错误
+- ✅ 两个缺口全部补全
 
 ## v2.0.0 统一数据枢纽完整版
 

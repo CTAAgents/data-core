@@ -99,19 +99,38 @@ class TencentProvider(EquityDataSource):
         params = params or {}
         period = params.get("period", "daily")
         days = int(params.get("days", 320))
+        adjustment = params.get("adjustment", "qfq").lower()  # qfq/hfq/none
+
         market = _detect_market_code(symbol)
         _p = _KL_DAY_PARAM.get(period, period)
+
+        # 映射 adjustment 到 API 参数：qfq/hfq/不带参数
+        # 腾讯 API: param=sh600519,day,,320,qfq
+        adj_param = ""
+        if adjustment == "qfq":
+            adj_param = "qfq"
+        elif adjustment == "hfq":
+            adj_param = "hfq"
+        # else: 不带复权参数（原始数据）
+
         try:
             with httpx.Client(timeout=10) as c:
                 url = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
-                resp = c.get(url, params={"param": f"{market}{symbol},{_p},,{days},qfq"})
+                param_str = f"{market}{symbol},{_p},,{days},{adj_param}" if adj_param else f"{market}{symbol},{_p},,{days}"
+                resp = c.get(url, params={"param": param_str})
                 data = resp.json()
             # 解析 K 线
             series = None
             if data and "data" in data:
                 d = data["data"]
                 ks = d.get(f"{market}{symbol}") or d.get(symbol) or {}
-                series = ks.get(_p) or ks.get("qfq" + _p) or ks.get("day")
+                # 按复权类型查找 series key
+                if adj_param == "qfq":
+                    series = ks.get(_p) or ks.get("qfq" + _p) or ks.get("day")
+                elif adj_param == "hfq":
+                    series = ks.get("hfq" + _p) or ks.get(_p) or ks.get("day")
+                else:
+                    series = ks.get(_p) or ks.get("day")
             if not series:
                 return None
             bars = []

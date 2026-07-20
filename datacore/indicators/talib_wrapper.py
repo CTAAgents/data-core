@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import importlib.util
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -354,7 +354,7 @@ def talib_mass(high: np.ndarray, low: np.ndarray,
         return None
 
 
-TALIB_FUNCTION_MAP: dict[str, callable] = {
+TALIB_FUNCTION_MAP: dict[str, Callable[..., Any]] = {
     "MA": talib_ma,
     "EMA": talib_ema,
     "RSI": talib_rsi,

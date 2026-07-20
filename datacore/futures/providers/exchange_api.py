@@ -72,7 +72,6 @@ class ExchangeApiProvider(FuturesDataSource):
                 total_receipts=0,
                 change=0,
                 warehouse_detail=[],
-                source=self.name,
             )
         except Exception:
             return None
@@ -99,7 +98,6 @@ class ExchangeApiProvider(FuturesDataSource):
                 long_ranks=[],
                 short_ranks=[],
                 volume_ranks=[],
-                source=self.name,
             )
         except Exception:
             return None

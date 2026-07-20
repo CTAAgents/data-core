@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..base import DataCoreBaseTool
+from ..schemas import ConfigReadSchema
 
 
 class ConfigReadTool(DataCoreBaseTool):
@@ -20,8 +21,9 @@ class ConfigReadTool(DataCoreBaseTool):
         "default (any, 可选) - 默认值，键不存在时返回；"
         "section (str, 可选) - 配置段，如 'sources.tdx_lc'"
     )
+    args_schema = ConfigReadSchema
 
-    def _run(self, key: str = "", default: Any = None,
+    def _run(self, key: str = "", default: Any = None,  # pylint: disable=arguments-differ
              section: str = "", **kwargs: Any) -> dict[str, Any]:
         try:
             from ...config import DataCoreConfig
@@ -30,7 +32,7 @@ class ConfigReadTool(DataCoreBaseTool):
 
             if key:
                 full_key = f"{section}.{key}" if section else key
-                value = config._get(full_key, default)
+                value = config._get(full_key, default)  # pylint: disable=protected-access
                 return {
                     "success": True,
                     "key": full_key,
@@ -38,8 +40,8 @@ class ConfigReadTool(DataCoreBaseTool):
                     "exists": value is not None,
                 }
             else:
-                yaml_config = config._yaml_config
-                env_config = config._env_config
+                yaml_config = config._yaml_config  # pylint: disable=protected-access
+                env_config = config._env_config  # pylint: disable=protected-access
                 return {
                     "success": True,
                     "yaml_config": yaml_config,

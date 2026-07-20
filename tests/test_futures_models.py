@@ -1,13 +1,13 @@
 import pytest
-from datacore.models.enums import DataType, MarketType, SourceGrade
+from datacore.models.enums import DataType
 from datacore.models.futures import (
-    ContractInfo, ContractChain,
+    ContractChain,
     TermStructurePoint, TermStructure,
     SpreadData, BasisData,
-    PositionRankItem, PositionRankData,
+    PositionRankData,
     WarehouseReceiptData,
 )
-from datacore.models.ohlcv import KlineData, KBar
+from datacore.models.ohlcv import KlineData
 
 
 class TestFuturesDataTypes:

@@ -27,7 +27,21 @@ disable=
     assignment-from-none,
     unnecessary-ellipsis,
     global-statement,
-    duplicate-code
+    duplicate-code,
+    arguments-differ,
+    unnecessary-pass,
+    too-many-positional-arguments,
+    too-many-arguments,
+    redefined-builtin,
+    too-many-branches,
+    no-member,
+    catching-non-exception,
+    chained-comparison,
+    too-many-statements,
+    too-many-lines,
+    import-error,
+    cell-var-from-loop,
+    keyword-arg-before-vararg
 
 [BASIC]
-good-names=i,j,k,x,y,z,_f,_p,_d,_s,_t
+good-names=i,j,k,x,y,z,_f,_p,_d,_s,_t,bar

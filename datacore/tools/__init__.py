@@ -70,7 +70,7 @@ __all__ = [
 ]
 
 
-def _build_all_tools() -> list[DataCoreBaseTool]:
+def _build_all_tools() -> list:
     """构建所有工具实例列表。
 
     Returns:
@@ -105,7 +105,7 @@ def _build_all_tools() -> list[DataCoreBaseTool]:
     return [cls() for cls in tool_classes]
 
 
-all_tools: list[DataCoreBaseTool] = _build_all_tools()
+all_tools: list = _build_all_tools()
 
 
 def get_tool_by_name(name: str) -> DataCoreBaseTool | None:

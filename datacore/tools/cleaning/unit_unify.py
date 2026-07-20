@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..base import DataCoreBaseTool
+from ..schemas import UnitUnifySchema
 
 
 class UnitUnifyTool(DataCoreBaseTool):
@@ -22,8 +23,9 @@ class UnitUnifyTool(DataCoreBaseTool):
         "source_unit (str, 可选) - 源单位，不传则自动检测；"
         "fields (list, 可选) - 需要转换的字段名，默认转换所有数值字段"
     )
+    args_schema = UnitUnifySchema
 
-    def _run(self, data: list[dict[str, Any]], target_unit: str,
+    def _run(self, data: list[dict[str, Any]], target_unit: str,  # pylint: disable=arguments-differ
              source_unit: str = "", fields: list[str] | None = None,
              **kwargs: Any) -> dict[str, Any]:
         try:

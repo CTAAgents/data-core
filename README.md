@@ -65,7 +65,7 @@ UnifiedDataProvider
   +-- news/       Cls -> WallStreetCn -> EastMoneyResearch
   +-- processing/ SentimentLLM -> RuleBase + MarketRegimeDetector
   +-- store/      MemoryCache + DuckDB/PostgreSQL/Redis
-  +-- registry/   SymbolRegistry (56+ 期货品种)
+  +-- registry/   SymbolRegistry (56+ 期货品种 + A 股/ETF/可转债自动识别)
   +-- config/     DataCoreConfig (环境变量 + YAML)
   +-- models/     DataType / MarketType / SourceGrade / DataPayload
   +-- breaker/    CLOSED/OPEN/HALF_OPEN 熔断器
@@ -164,12 +164,12 @@ store:
 
 ```bash
 cd datacore
-python -m pytest tests/ -v   # 724+ 个测试用例
+python -m pytest tests/ -v   # 1985+ 个测试用例
 ```
 
 ## 文档
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - 架构设计文档
+- [ARCHITECTURE.md (归档)](docs/archive/ARCHITECTURE_v1.0.0.md) - 旧版架构设计文档（已归档，最新架构见 HARNESS）
 - [CODE_WIKI.md](CODE_WIKI.md) - 项目说明书（动态文档）
 - [PRODUCTION_PLAN.md](docs/PRODUCTION_PLAN.md) - 生产就绪路线图（v0.5.0 → v1.0.0）
 - [UNIFIED_DATA_HUB_PLAN.md](docs/UNIFIED_DATA_HUB_PLAN.md) - 统一数据中枢升级方案（v1.0 → v2.0）
@@ -178,8 +178,12 @@ python -m pytest tests/ -v   # 724+ 个测试用例
 
 ## 版本
 
-v2.0.0 (2026-07-19) - 统一数据中枢版：BaseTool 接口层 + 指标体系 + 复权/换月引擎 + 周期转换 + FDT 兼容 + Qlib 适配器 + 清洗/校验/采集/运维工具链
-v1.3.0 (2026-07-19) - 扩展能力版：复权/换月引擎 + 周期转换 + 消费者反馈通道 + 清洗/校验/运维工具
-v1.2.0 (2026-07-19) - FDC 吸收版：40+ 技术指标 + 3 个期货新数据源 + 趋势成熟度评估
-v1.1.0 (2026-07-19) - 基础设施+双接口版：AsyncDataProvider 异步接口 + F10 综合报告 + core 共享模块
-v1.0.0 (2026-07-19) - 生产就绪版：WebSocket 实时行情 + 告警系统 + 性能基准 + 安全加固
+v2.4.0 (2026-07-20) - Provider adjustment 参数打通版：消费端可通过 adjustment="none" 获取未复权原始数据
+v2.3.0 (2026-07-20) - FDT 集成修复版：SymbolRegistry A 股自动识别 + 东方财富期货 secid 修复，FDT 可正常切换 Data-Core 数据源
+v2.2.0 (2026-07-20) - Prometheus 可观测性版：observability.py + metrics_endpoint.py + 11 个标准指标 + 装饰器埋点
+v2.1.0 (2026-07-20) - 缺口补全版：API 层周期自动转换 + BaseTool args_schema 补全
+v2.0.0 (2026-07-20) - 统一数据中枢版：BaseTool 接口层 + 指标体系 + 复权/换月引擎 + 周期转换 + FDT 兼容 + Qlib 适配器 + 清洗/校验/采集/运维工具链
+v1.3.0 (2026-07-20) - 扩展能力版：复权/换月引擎 + 周期转换 + 消费者反馈通道 + 清洗/校验/运维工具
+v1.2.0 (2026-07-20) - FDC 吸收版：40+ 技术指标 + 3 个期货新数据源 + 趋势成熟度评估
+v1.1.0 (2026-07-20) - 基础设施+双接口版：AsyncDataProvider 异步接口 + F10 综合报告 + core 共享模块
+v1.0.0 (2026-07-20) - 生产就绪版：WebSocket 实时行情 + 告警系统 + 性能基准 + 安全加固

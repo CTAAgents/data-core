@@ -67,7 +67,6 @@ class TestGuosenProvider:
         p.api_key = "test_key"
         p.base_url = "https://api.guosen.com.cn/"
         p.timeout = 5
-        from datacore.models.enums import DataType
         result = p.fetch("600519", "unknown_type")
         assert result is None
 

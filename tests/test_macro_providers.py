@@ -1,6 +1,5 @@
 """宏观数据源的 mock 测试。"""
 from unittest.mock import patch, MagicMock
-from datacore.macro.models import MacroData
 
 
 class TestNationalBureauProvider:
@@ -397,3 +396,25 @@ class TestPboCProvider:
             mock_client.return_value = mock_instance
 
             assert provider.check_available() is False
+
+    def test_fetch_macro_parse_error_skips_bad_item(self):
+        """单条数据转换失败时跳过，保留其余数据。"""
+        from datacore.macro.providers.pboc import PboCProvider
+        provider = PboCProvider()
+
+        mock_resp = MagicMock()
+        mock_resp.text = "2026年7月 LPR 3.45% 2026年6月 LPR 3.55%"
+
+        with patch("httpx.Client") as mock_client, \
+             patch("datacore.macro.providers.pboc.float", side_effect=[ValueError("bad"), 3.55]):
+            mock_instance = MagicMock()
+            mock_instance.__enter__.return_value.get.return_value = mock_resp
+            mock_client.return_value = mock_instance
+
+            result = provider.fetch_macro(limit=5)
+
+        assert result is not None
+        assert result.total == 1
+        assert len(result.data) == 1
+        assert result.data[0].value == 3.55
+        assert result.data[0].period == "2026"

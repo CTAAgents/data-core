@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .base import DataCoreBaseTool
+from .schemas import HealthSchema
 
 
 class DataCoreHealthTool(DataCoreBaseTool):
@@ -19,6 +20,7 @@ class DataCoreHealthTool(DataCoreBaseTool):
         "参数：source (str, 可选) - 指定数据源名称，不传则检查所有；"
         "detail (bool, 可选) - 是否返回详细信息，默认 True"
     )
+    args_schema = HealthSchema
 
     def _run(self, source: Optional[str] = None, detail: bool = True,
              **kwargs: Any) -> dict[str, Any]:

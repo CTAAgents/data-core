@@ -6,6 +6,7 @@ from typing import Any
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import MarketRegimeSchema
 
 
 class DataCoreMarketRegimeTool(DataCoreBaseTool):
@@ -22,6 +23,7 @@ class DataCoreMarketRegimeTool(DataCoreBaseTool):
         "lookback (int, 可选) - 回顾周期数，默认 60；"
         "method (str, 可选) - 检测方法，'ma'/'bb'/'regime'/'auto'，默认 'auto'"
     )
+    args_schema = MarketRegimeSchema
 
     def _run(self, symbol: str, period: str = "daily", lookback: int = 60,
              method: str = "auto", **kwargs: Any) -> dict[str, Any]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .base import DataCoreBaseTool
+from .schemas import OHLCVSchema
 
 
 class DataCoreOHLCVTool(DataCoreBaseTool):
@@ -24,6 +25,7 @@ class DataCoreOHLCVTool(DataCoreBaseTool):
         "end_date (str, 可选) - 结束日期，格式 'YYYY-MM-DD'；"
         "adjust (str, 可选) - 复权方式，'none'/'forward'/'backward'，默认 'none'"
     )
+    args_schema = OHLCVSchema
 
     def _run(self, symbol: str, period: str = "daily", limit: int = 100,
              start_date: Optional[str] = None, end_date: Optional[str] = None,

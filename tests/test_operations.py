@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import os
 import tempfile
-import time
 
 import pytest
-import pandas as pd
 
 from datacore.operations.crawl_retry import (
     retry_with_backoff,
@@ -19,12 +17,10 @@ from datacore.operations.error_log import (
     log_error_json,
     create_error_record,
     ErrorLogger,
-    ErrorRecord,
 )
 from datacore.operations.config_tools import (
     load_yaml_config,
     get_env_var,
-    load_config,
     ConfigLoader,
 )
 

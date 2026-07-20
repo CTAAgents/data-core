@@ -15,7 +15,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from unittest.mock import patch
+
 from datacore.resampler import resample_kline
+from datacore.resampler.ohlcv import (
+    resample_ohlcv,
+    resample_minute_to_minute,
+    resample_daily_to_daily,
+)
 from datacore.resampler.registry import (
     PERIOD_MAP,
     PERIOD_GRANULARITY,
@@ -26,11 +33,6 @@ from datacore.resampler.registry import (
     is_same_category,
     validate_period,
     list_periods,
-)
-from datacore.resampler.ohlcv import (
-    resample_ohlcv,
-    resample_minute_to_minute,
-    resample_daily_to_daily,
 )
 from datacore.resampler.volume import (
     aggregate_volume,
@@ -477,6 +479,63 @@ class TestEdgeCases:
         df = _generate_minute_data(n=5)
         result = resample_kline(df, "5m", "1m")
         assert len(result) == 1
+
+
+# ============================================================
+#  ohlcv.py 测试 - 直接调用内部函数
+# ============================================================
+
+class TestOHLCVDirectFunctions:
+    """直接调用 ohlcv.py 内部函数，覆盖 resample_kline 未触达的分支。"""
+
+    def test_resample_ohlcv_invalid_period(self):
+        """测试直接调用 resample_ohlcv 时非法源/目标周期抛出 ValueError。"""
+        df = _generate_minute_data(n=10)
+        with pytest.raises(ValueError, match="只能从细粒度重采样到粗粒度"):
+            resample_ohlcv(df, "1m", "5m")
+
+    def test_resample_ohlcv_missing_column(self):
+        """测试直接调用 resample_ohlcv 时缺少必要列抛出 KeyError。"""
+        dates = pd.date_range("2024-01-02 09:30", periods=5, freq="1min")
+        df = pd.DataFrame(
+            {
+                "high": [101.0, 102.0, 103.0, 104.0, 105.0],
+                "low": [99.0, 100.0, 101.0, 102.0, 103.0],
+                "close": [100.0, 101.0, 102.0, 103.0, 104.0],
+                "volume": [100.0, 200.0, 300.0, 400.0, 500.0],
+            },
+            index=dates,
+        )
+        with pytest.raises(KeyError, match="缺少必要列"):
+            resample_ohlcv(df, "5m", "1m")
+
+    def test_resample_ohlcv_record_operation_failure(self):
+        """测试埋点异常时重采样结果仍正常返回。"""
+        df = _generate_minute_data(n=10)
+        with patch("datacore.resampler.ohlcv.record_resampler_operation", side_effect=RuntimeError("boom")):
+            result = resample_ohlcv(df, "5m", "1m")
+        assert not result.empty
+        assert "open" in result.columns
+
+    def test_resample_minute_to_minute(self):
+        """测试直接调用 resample_minute_to_minute。"""
+        df = _generate_minute_data(n=10)
+        result = resample_minute_to_minute(df, "5m")
+        assert len(result) == 2
+        expected_vol = (
+            df["volume"].iloc[0] + df["volume"].iloc[1] + df["volume"].iloc[2]
+            + df["volume"].iloc[3] + df["volume"].iloc[4]
+        )
+        assert result["volume"].iloc[0] == expected_vol
+
+    def test_resample_daily_to_daily(self):
+        """测试直接调用 resample_daily_to_daily。"""
+        df = _generate_daily_data(n=10)
+        result = resample_daily_to_daily(df, "daily")
+        assert not result.empty
+        assert "open" in result.columns
+        # 原数据中的第一个开盘价为结果保留
+        assert result["open"].iloc[0] == df["open"].iloc[0]
 
 
 # ============================================================

@@ -8,13 +8,12 @@
   - providers/tencent.py    TencentProvider / _parse_tencent_quote / _detect_market_code
 """
 from __future__ import annotations
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 import pytest
 import time
 
 from datacore.models.enums import DataType, MarketType, SourceGrade
 from datacore.models.payload import DataPayload
-from datacore.models.ohlcv import KBar, KlineData, QuoteData
 from datacore.equity.equity_provider import EquityDataProvider
 from datacore.equity.financial import calc_financial_score
 from datacore.equity.providers.base import EquityDataSource
@@ -166,6 +165,62 @@ class TestEquityDataProvider:
         provider.get("600000", DataType.OHLCV, params)
         provider.sources[0].fetch.assert_called_once_with("600000", DataType.OHLCV, params)
 
+    # ── _get_etf 多源降级链 ──
+
+    def test_get_etf_first_source_returns_result(self):
+        provider = EquityDataProvider()
+        payload = _make_payload(data_type=DataType.OHLCV)
+        provider.sources[0].check_available = MagicMock(return_value=True)
+        provider.sources[0].fetch = MagicMock(return_value=payload)
+
+        result = provider._get_etf("510300", DataType.OHLCV)
+        assert result is payload
+        provider.sources[0].fetch.assert_called_once_with("510300", DataType.OHLCV, None)
+
+    def test_get_etf_skips_unavailable_source(self):
+        provider = EquityDataProvider()
+        payload = _make_payload(data_type=DataType.OHLCV)
+        provider.sources[0].check_available = MagicMock(return_value=False)
+        provider.sources[1].check_available = MagicMock(return_value=True)
+        provider.sources[1].fetch = MagicMock(return_value=payload)
+
+        result = provider._get_etf("510300", DataType.OHLCV)
+        assert result is payload
+        provider.sources[1].fetch.assert_called_once_with("510300", DataType.OHLCV, None)
+
+    def test_get_etf_skips_unsupported_type(self):
+        provider = EquityDataProvider()
+        payload = _make_payload(data_type=DataType.MACRO)
+        provider.sources[0].check_available = MagicMock(return_value=True)
+        provider.sources[0].fetch = MagicMock()
+        provider.sources[1].check_available = MagicMock(return_value=True)
+        provider.sources[1].fetch = MagicMock(return_value=payload)
+
+        result = provider._get_etf("510300", DataType.MACRO)
+        assert result is payload
+        provider.sources[0].fetch.assert_not_called()
+
+    def test_get_etf_exception_falls_through(self):
+        provider = EquityDataProvider()
+        payload = _make_payload(data_type=DataType.OHLCV)
+        provider.sources[0].check_available = MagicMock(return_value=True)
+        provider.sources[0].fetch = MagicMock(side_effect=RuntimeError("boom"))
+        provider.sources[1].check_available = MagicMock(return_value=True)
+        provider.sources[1].fetch = MagicMock(return_value=payload)
+
+        result = provider._get_etf("510300", DataType.OHLCV)
+        assert result is payload
+
+    def test_get_etf_all_sources_fail_returns_none(self):
+        provider = EquityDataProvider()
+        provider.sources[0].check_available = MagicMock(return_value=False)
+        provider.sources[1].check_available = MagicMock(return_value=True)
+        provider.sources[1].fetch = MagicMock(return_value=None)
+        provider.sources[2].check_available = MagicMock(return_value=False)
+
+        result = provider._get_etf("510300", DataType.OHLCV)
+        assert result is None
+
 
 # ════════════════════════════════════════════════
 # providers / eastmoney.py
@@ -180,11 +235,9 @@ class TestEastMoneyProvider:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
             "data": {
-                "klinedata": [
-                    {"f51": "2024-01-02", "f52": 10.0, "f53": 11.0, "f54": 9.5,
-                     "f55": 10.5, "f56": 100000, "f57": 1000000},
-                    {"f51": "2024-01-03", "f52": 10.5, "f53": 11.5, "f54": 10.0,
-                     "f55": 11.0, "f56": 200000, "f57": 2000000},
+                "klines": [
+                    "2024-01-02,10.0,10.5,11.0,9.5,100000,1000000",
+                    "2024-01-03,10.5,11.0,11.5,10.0,200000,2000000",
                 ]
             }
         }
@@ -214,9 +267,8 @@ class TestEastMoneyProvider:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
             "data": {
-                "klinedata": [
-                    {"f51": "2024-01-02", "f52": 10.0, "f53": 11.0, "f54": 9.5,
-                     "f55": 10.5, "f56": 100000, "f57": 1000000},
+                "klines": [
+                    "2024-01-02,10.0,10.5,11.0,9.5,100000,1000000",
                 ]
             }
         }
@@ -246,9 +298,9 @@ class TestEastMoneyProvider:
 
         assert result is None
 
-    def test_fetch_kline_empty_klinedata_returns_none(self):
+    def test_fetch_kline_empty_klines_returns_none(self):
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"data": {"klinedata": []}}
+        mock_resp.json.return_value = {"data": {"klines": []}}
         mock_client = MagicMock()
         mock_client.__enter__.return_value = mock_client
         mock_client.get.return_value = mock_resp
@@ -275,10 +327,9 @@ class TestEastMoneyProvider:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
             "data": {
-                "klinedata": [
-                    {"f51": "2024-01-02", "f52": 10.0, "f53": 11.0, "f54": 9.5,
-                     "f55": 10.5, "f56": 100000, "f57": 1000000},
-                    {"f51": "2024-01-03"},  # 缺少字段
+                "klines": [
+                    "2024-01-02,10.0,10.5,11.0,9.5,100000,1000000",
+                    "bad_row",  # 缺少字段
                 ]
             }
         }

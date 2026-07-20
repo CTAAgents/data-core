@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
 import pytest
+from unittest.mock import patch
 
 from datacore.fdc_compat import (
     compute_indicators,
@@ -364,10 +365,11 @@ class TestAsyncFunctionsWithMock:
         assert len(result) == 1
 
     def test_get_quote_with_mock(self, mocker):
-        """测试 get_quote 异步函数。"""
+        """测试 get_quote 返回 QuoteData 对象（含 to_dict）。"""
         import asyncio
         from datacore.models.enums import DataType, MarketType, SourceGrade
         from datacore.models.payload import DataPayload
+        from datacore.models.ohlcv import QuoteData
 
         fdc_module, mock_provider = self._setup_mock(mocker)
 
@@ -383,11 +385,12 @@ class TestAsyncFunctionsWithMock:
         fdc_module._provider = mock_provider
 
         result = asyncio.run(get_quote("RB"))
-        assert isinstance(result, dict)
-        assert result["last_price"] == 3500
+        assert isinstance(result, QuoteData)
+        assert result.last_price == 3500
+        assert "last_price" in result.to_dict()
 
     def test_get_quote_list_data(self, mocker):
-        """测试 get_quote 返回非 dict 数据时的包装。"""
+        """测试 get_quote 返回非 dict 数据时原样返回。"""
         import asyncio
         from datacore.models.enums import DataType, MarketType, SourceGrade
         from datacore.models.payload import DataPayload
@@ -406,15 +409,14 @@ class TestAsyncFunctionsWithMock:
         fdc_module._provider = mock_provider
 
         result = asyncio.run(get_quote("RB"))
-        assert isinstance(result, dict)
-        assert result["symbol"] == "RB"
-        assert "data" in result
+        assert result == [{"price": 3500}]
 
     def test_batch_get_quotes_with_mock(self, mocker):
-        """测试 batch_get_quotes 异步函数。"""
+        """测试 batch_get_quotes 返回 QuoteData 对象字典。"""
         import asyncio
         from datacore.models.enums import DataType, MarketType, SourceGrade
         from datacore.models.payload import DataPayload
+        from datacore.models.ohlcv import QuoteData
 
         fdc_module, mock_provider = self._setup_mock(mocker)
 
@@ -444,11 +446,12 @@ class TestAsyncFunctionsWithMock:
         assert isinstance(result, dict)
         assert "RB" in result
         assert "CU" in result
-        assert result["RB"]["last_price"] == 3500
-        assert result["CU"]["last_price"] == 70000
+        assert isinstance(result["RB"], QuoteData)
+        assert result["RB"].last_price == 3500
+        assert result["CU"].last_price == 70000
 
     def test_batch_get_quotes_list_data(self, mocker):
-        """测试 batch_get_quotes 返回非 dict 数据时的包装。"""
+        """测试 batch_get_quotes 返回非 dict 数据时原样返回。"""
         import asyncio
         from datacore.models.enums import DataType, MarketType, SourceGrade
         from datacore.models.payload import DataPayload
@@ -467,9 +470,7 @@ class TestAsyncFunctionsWithMock:
         fdc_module._provider = mock_provider
 
         result = asyncio.run(batch_get_quotes(["RB"]))
-        assert isinstance(result["RB"], dict)
-        assert result["RB"]["symbol"] == "RB"
-        assert "data" in result["RB"]
+        assert result["RB"] == [{"price": 3500}]
 
     def test_get_term_structure_with_mock(self, mocker):
         """测试 get_term_structure 异步函数。"""
@@ -703,3 +704,214 @@ class TestAsyncFunctionsWithMock:
         result = asyncio.run(get_kline("RB"))
         assert isinstance(result, list)
         assert len(result) == 0
+
+
+# ============================================================
+#  补充覆盖率测试
+# ============================================================
+
+class TestFdcCompatCoverage:
+    """补充 fdc_compat 未覆盖分支。"""
+
+    def test_get_provider_creates_async_provider(self):
+        """覆盖 _get_provider 首次创建 AsyncDataProvider 分支。"""
+        import datacore.fdc_compat as fdc_module
+
+        fdc_module._provider = None
+        with patch.object(fdc_module, "AsyncDataProvider") as mock_cls:
+            provider = fdc_module._get_provider()
+            mock_cls.assert_called_once_with()
+            assert provider is mock_cls.return_value
+            assert fdc_module._provider is mock_cls.return_value
+        fdc_module._provider = None
+
+    def test_kline_payload_to_list_with_to_dict(self):
+        class Data:
+            def to_dict(self):
+                return [{"close": 100}]
+
+        class Payload:
+            data = Data()
+
+        result = _kline_payload_to_list(Payload())
+        assert result == [{"close": 100}]
+
+    def test_kline_payload_to_list_with_to_list(self):
+        class Data:
+            def tolist(self):
+                return [{"close": 200}]
+
+        class Payload:
+            data = Data()
+
+        result = _kline_payload_to_list(Payload())
+        assert result == [{"close": 200}]
+
+    def test_kline_payload_to_list_with_plain_lists(self):
+        class Payload:
+            data = {"close": [1, 2], "open": [3, 4]}
+
+        result = _kline_payload_to_list(Payload())
+        assert result == [{"close": 1, "open": 3}, {"close": 2, "open": 4}]
+
+    def test_payload_to_data_with_to_dict(self):
+        class Data:
+            def to_dict(self):
+                return {"price": 10}
+
+        class Payload:
+            data = Data()
+
+        assert _payload_to_data(Payload()) == {"price": 10}
+
+    def test_payload_to_data_with_to_list(self):
+        class Data:
+            def tolist(self):
+                return [1, 2, 3]
+
+        class Payload:
+            data = Data()
+
+        assert _payload_to_data(Payload()) == [1, 2, 3]
+
+    def test_kline_list_to_arrays_uppercase_fields(self):
+        kline = [{"OPEN": 1, "HIGH": 2, "LOW": 3, "CLOSE": 4, "VOLUME": 5}]
+        result = _kline_list_to_arrays(kline)
+        assert result["open"].tolist() == [1.0]
+        assert result["high"].tolist() == [2.0]
+        assert result["low"].tolist() == [3.0]
+        assert result["close"].tolist() == [4.0]
+        assert result["volume"].tolist() == [5.0]
+
+    def test_normalize_indicator_data_pandas_import_error(self, monkeypatch):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "pandas":
+                raise ImportError("No pandas")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        with pytest.raises(TypeError, match="不支持的数据格式"):
+            _normalize_indicator_data("unsupported")
+
+    def test_normalize_dict_unknown_keys_returns_same_dict(self):
+        data = {"foo": [1, 2, 3]}
+        result = _normalize_indicator_data(data)
+        assert result is data
+
+
+class TestAsyncFunctionsNonDictReturn:
+    """覆盖异步函数返回非 dict 时的包装分支。"""
+
+    def _setup_mock(self, mocker):
+        import datacore.fdc_compat as fdc_module
+
+        fdc_module._provider = None
+        mock_provider = mocker.AsyncMock()
+        return fdc_module, mock_provider
+
+    def _make_payload(self, data_type, data):
+        from datacore.models.enums import MarketType, SourceGrade
+        from datacore.models.payload import DataPayload
+
+        return DataPayload(
+            symbol="RB",
+            data_type=data_type,
+            market=MarketType.FUTURES,
+            data=data,
+            source="test",
+            grade=SourceGrade.PRIMARY,
+        )
+
+    def test_get_term_structure_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_provider.get = mocker.AsyncMock(
+            return_value=self._make_payload(DataType.FUTURES_TERM_STRUCTURE, [1, 2])
+        )
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_term_structure("RB"))
+        assert result == {"symbol": "RB", "data": [1, 2]}
+
+    def test_get_spread_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_provider.get = mocker.AsyncMock(
+            return_value=self._make_payload(DataType.FUTURES_SPREAD, "spread_value")
+        )
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_spread("RB"))
+        assert result == {"symbol": "RB", "data": "spread_value"}
+
+    def test_get_basis_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_provider.get = mocker.AsyncMock(
+            return_value=self._make_payload(DataType.FUTURES_BASIS, 123)
+        )
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_basis("RB"))
+        assert result == {"symbol": "RB", "data": 123}
+
+    def test_get_warrant_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_provider.get = mocker.AsyncMock(
+            return_value=self._make_payload(DataType.FUTURES_WAREHOUSE_RECEIPT, [10, 20])
+        )
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_warrant("RB"))
+        assert result == {"symbol": "RB", "data": [10, 20]}
+
+    def test_get_fundamental_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_provider.get = mocker.AsyncMock(
+            return_value=self._make_payload(DataType.FUNDAMENTAL, "raw")
+        )
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_fundamental("RB"))
+        assert result == {"symbol": "RB", "data": "raw"}
+
+    def test_get_f10_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_payload = self._make_payload(DataType.F10_REPORT, [1])
+        mock_provider.get_f10 = mocker.AsyncMock(return_value=mock_payload)
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_f10("RB"))
+        assert result == {"symbol": "RB", "data": [1]}
+
+    def test_get_position_ranking_non_dict(self, mocker):
+        import asyncio
+        from datacore.models.enums import DataType
+
+        fdc_module, mock_provider = self._setup_mock(mocker)
+        mock_provider.get = mocker.AsyncMock(
+            return_value=self._make_payload(DataType.FUTURES_POSITION, ["rank"])
+        )
+        fdc_module._provider = mock_provider
+
+        result = asyncio.run(get_position_ranking("RB"))
+        assert result == {"symbol": "RB", "data": ["rank"]}

@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import NewsSchema
 
 
 class DataCoreNewsTool(DataCoreBaseTool):
@@ -24,6 +25,7 @@ class DataCoreNewsTool(DataCoreBaseTool):
         "category (str, 可选) - 新闻分类，如 '宏观'、'行业'、'公司' 等；"
         "source (str, 可选) - 新闻来源"
     )
+    args_schema = NewsSchema
 
     def _run(self, symbol: Optional[str] = None, limit: int = 50,
              start_date: Optional[str] = None, end_date: Optional[str] = None,
@@ -33,7 +35,7 @@ class DataCoreNewsTool(DataCoreBaseTool):
         from ..models.enums import DataType
 
         provider = UnifiedDataProvider()
-        params = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
         if start_date:
             params["start_date"] = start_date
         if end_date:

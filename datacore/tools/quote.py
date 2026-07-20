@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from .base import DataCoreBaseTool
 from .ohlcv import _payload_to_dict
+from .schemas import QuoteSchema
 
 
 class DataCoreQuoteTool(DataCoreBaseTool):
@@ -21,6 +22,7 @@ class DataCoreQuoteTool(DataCoreBaseTool):
         "参数：symbol (str, 必需) - 品种代码，如 'RB'、'000001'；"
         "fields (list, 可选) - 指定返回字段，默认返回全部字段"
     )
+    args_schema = QuoteSchema
 
     def _run(self, symbol: str, fields: Optional[list[str]] = None,
              **kwargs: Any) -> dict[str, Any]:

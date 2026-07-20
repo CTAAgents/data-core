@@ -1,9 +1,6 @@
 """Tests for datacore.metrics — MetricsCollector 指标收集器。"""
 from __future__ import annotations
 
-import time
-import pytest
-from unittest.mock import patch
 from datacore.metrics import MetricsCollector, get_metrics
 
 

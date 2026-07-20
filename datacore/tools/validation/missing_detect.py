@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..base import DataCoreBaseTool
+from ..schemas import DataMissingDetectSchema
 
 
 class DataMissingDetectTool(DataCoreBaseTool):
@@ -26,8 +27,9 @@ class DataMissingDetectTool(DataCoreBaseTool):
         "fields (list, 可选) - 要检测的字段列表，默认所有数值字段；"
         "return_details (bool, 可选) - 是否返回详细缺失位置，默认 True"
     )
+    args_schema = DataMissingDetectSchema
 
-    def _run(self, data: list[dict[str, Any]], date_col: str = "datetime",
+    def _run(self, data: list[dict[str, Any]], date_col: str = "datetime",  # pylint: disable=arguments-differ
              expected_freq: str = "", fields: list[str] | None = None,
              return_details: bool = True, **kwargs: Any) -> dict[str, Any]:
         try:
